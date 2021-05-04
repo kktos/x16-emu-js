@@ -1,0 +1,98 @@
+<html>
+	<head>
+		<style>
+			@font-face { font-family: PrintChar21; src: url("/assets/fonts/PrintChar21.ttf"); } 
+			BODY {
+				font-family: PrintChar21;
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				margin: 0;
+			}
+			#debugger {
+				background-color: #ffffff4d;
+				position: fixed;
+				bottom: 0;
+				left: 0;
+				right: 0;
+				height: 30vh;
+				color: #29f529;
+				font-size: 10px;
+				padding: 5px;
+				display: grid;
+				grid-template: "disasm registers mem  "
+							   "disasm     .     mem  "
+							   "   .       .    stack";
+			}
+			#disasm {
+				grid-area: disasm;
+				display: grid;
+			    grid-gap: 3px;
+				grid-template-columns: 250px;
+			}
+			#registers {
+				grid-area: registers;
+			}
+			#mem {
+				grid-area: mem;
+			}
+			#stack {
+				grid-area: stack;
+			}
+			#a:before {
+				content: "A: ";
+			}
+			#x:before {
+				content: "X: ";
+			}
+			#y:before {
+				content: "Y: ";
+			}
+			#pc:before {
+				content: "PC: ";
+			}
+			.selected {
+				color: white;
+			}
+		</style>
+	</head>
+	<body>
+		<canvas id="screen"></canvas>
+		<div id="debugger">
+			<div id="mem">
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+			</div>
+			<div id="disasm"></div>
+			<div id="stack">
+				1F8: 00
+				1F9: 00
+				1FA: 00
+				1FB: 00
+				1FC: 00
+				1FD: 00
+				1FE: 00
+				1FF: 00
+			</div>
+			<div id="registers">
+				<div id="a">00</div>
+				<div id="x">00</div>
+				<div id="y">00</div>
+				<div id="pc">0000</div>
+				<div id="s">00</div>
+			</div>
+			<div>
+				<button id="pause" class="btn">PAUSE</button>
+				<button id="step" class="btn">STEP</button>
+			</div>
+		</div>
+	</body>
+</html>
