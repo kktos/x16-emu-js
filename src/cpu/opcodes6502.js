@@ -1109,6 +1109,10 @@ function makeCpuFunctions(cpu, opcodes, is65c12) {
 		lines = [
 			"\"use strict\";",
 			"// " + utils.hexbyte(opcodeNum) + " - " + opcode + "\n"].concat(lines);
+
+		// console.log("-------------");
+		// console.log(opcodeNum);
+		// console.log(indent + lines.join("\n" + indent));
 		return indent + lines.join("\n" + indent);
 	}
 
@@ -1197,8 +1201,14 @@ function makeCpuFunctions(cpu, opcodes, is65c12) {
 				case "branch":
 					destAddr = addr + utils.signExtend(cpu.bus.cpuPeek(addr + 1)) + 2;
 					return [split[0] + " $" + formatJumpAddr(destAddr) + suffix, addr + 2, destAddr];
-				case "zp":
-					return [split[0] + " $" + utils.hexbyte(cpu.bus.cpuPeek(addr + 1)) + suffix, addr + 2];
+				case "zp": {
+					const zpAddr= cpu.bus.cpuPeek(addr + 1);
+					const zpValue= utils.hexbyte(cpu.bus.cpuPeek(zpAddr));
+					return [
+						`${split[0]} $${utils.hexbyte(cpu.bus.cpuPeek(addr + 1))}${suffix}; $${zpValue}`,
+						addr + 2
+					];
+				}
 				case "(,x)":
 					return [split[0] + " ($" + utils.hexbyte(cpu.bus.cpuPeek(addr + 1)) + ", X)" + suffix, addr + 2];
 				case "()":

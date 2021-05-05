@@ -3,6 +3,7 @@ import KeyMap from "./keymap.js";
 import Cpu6502 from "./cpu/cpu6502.js"
 import Bus from "./cpu/bus.js";
 import Debugger from "./debugger.js";
+import Video from "./video.js";
 import {TEXT_LINES} from "./apple2-monitor.js";
 
 let lastTime= 0;
@@ -16,8 +17,7 @@ export default class VM {
 		this.isRunning= true;
 
 		this.cpuMultiplier= 1;
-        this.clocksPerSecond = (this.cpuMultiplier * 2 * 1000 * 1000) | 0;
-        this.MaxCyclesPerFrame = this.clocksPerSecond / 10;
+		this.cyclesPerFrame= 1_000_000 * ENV.FPS | 0;
 
 		this.gc= {
 			viewport: {
@@ -39,17 +39,21 @@ export default class VM {
 		this.cpu= new Cpu6502(model, this.bus);
 		this.cpu.reset(true);
 
-		this.debugger= new Debugger(this.cpu);
+		this.debugger= new Debugger(this, this.cpu);
 
 		this.cpu._debugInstruction= this.debugger.onInstruction.bind(this.debugger);
+
+		this.video= new Video();
+		this.canvas.width= this.video.width;
+		this.canvas.height= this.video.height;
 	}
 
-	updateVideo({ticks, viewport:{ctx, canvas}}, cycles) {
+	updateVideo({tick, viewport:{ctx, canvas}}, cycles) {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
 
-		let x= 50;
-		let y= 50;
+		let x= 7;
+		let y= 7+22;
 		ctx.fillStyle="white";
 		ctx.font = '20px "PrintChar21"';
 		for(let line= 0; line<24; line++)
@@ -62,8 +66,14 @@ export default class VM {
 				if(ascii<=0x3F)
 					ascii+= 0xE100;
 				else
+				if(ascii<=0x5F)
+					ascii+= ((tick/10)|0)%2 ? 0xE100 : 0 ;
+				else
+				if(ascii<=0x7F)
+					ascii+= -0x40 + ( ((tick/10)|0)%2 ? 0xE100 : 0 );
+				else
 				if((ascii>=0xA0) && (ascii<=0xDF))
-					ascii= ascii & 0x7F;
+					ascii= ascii - 0x80;
 				const char= String.fromCharCode(ascii);
 				ctx.fillText(char, x+(15*column), y+(22*line));
 			}
@@ -83,30 +93,29 @@ export default class VM {
 
 		// ctx.fillStyle="red";
 		// ctx.font = '16px monospace';
-		// ctx.fillText(cycles, 10, canvas.height-20);
+		// ctx.fillText(`${cycles} - ${tick}`, 10, canvas.height-20);
 		// ctx.fillText(`PC:${this.cpu.pc}`, 10, canvas.height-40);
 		// ctx.fillText(` X:${this.cpu.x}`, 10, canvas.height-60);
 
 	}
 
 	loop(dt= 0) {
-		// const cycles = this.clocksPerSecond / 50 | 0;
-		const sinceLast = dt - lastTime;
-		let cycles= sinceLast * this.clocksPerSecond / 1000;
-		cycles= Math.min(cycles, this.MaxCyclesPerFrame)|0;
 
 		acc+= (dt - lastTime) / 1000;
 		while(acc > inc) {
 
-			const isStopped= !this.cpu.execute(1000);
-			if(isStopped)
-				console.log("-- CPU STOPPED");
+			const cycles= this.cpuMultiplier * this.cyclesPerFrame;
+			const isStopped= !this.cpu.execute(cycles);
+			// if(isStopped)
+			// 	console.log("-- CPU STOPPED");
 			this.updateVideo(this.gc, cycles);
+			
 			this.gc.tick++;
 			acc-= inc;
 
 			if(isStopped) {
 				this.isRunning= false;
+				this.debugger.stop();
 				return;
 			}
 
@@ -133,22 +142,6 @@ export default class VM {
 			case "keydown":
 				this.gc.keys.set(e.key, e.type == "keydown");
 				break;
-
-			case "click":
-				switch(e.target.id) {
-					case "pause":
-						this.isRunning= false;
-						this.debugger.update();
-						break;
-
-					case "step":
-						this.debugger.step();
-						this.play();
-						this.debugger.update();
-						break;
-
-				}
-				break;
 		}
 
 	}
@@ -158,9 +151,6 @@ export default class VM {
 		[
 			"keyup", "keydown",
 		].forEach(type=> window.addEventListener(type, this));
-
-		document.querySelectorAll("#debugger .btn")
-			.forEach(btn => btn.addEventListener("click", this));
 
 		this.play();
 

@@ -1,6 +1,6 @@
 
 export function hexbyte(value) {
-	return ((value >>> 4) & 0xf).toString(16) + (value & 0xf).toString(16);
+	return (((value >>> 4) & 0xf).toString(16) + (value & 0xf).toString(16)).toUpperCase();
 }
 
 export function hexword(value) {

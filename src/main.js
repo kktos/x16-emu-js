@@ -3,8 +3,8 @@ import VM from "./vm.js";
 import {MONITOR} from "./apple2-monitor.js";
 
 const canvas= document.getElementById("screen");
-canvas.width= window.innerWidth;
-canvas.height= window.innerHeight;
+// canvas.width= window.innerWidth;
+// canvas.height= window.innerHeight;
 
 const vm= new VM(canvas);
 

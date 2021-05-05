@@ -10,48 +10,80 @@
 				right: 0;
 				bottom: 0;
 				margin: 0;
+				display: grid;
+				grid-auto-flow: column;
+    			grid-template-columns: auto 1fr;
+				background-color: #353535;
 			}
 			#debugger {
-				background-color: #ffffff4d;
-				position: fixed;
-				bottom: 0;
-				left: 0;
-				right: 0;
-				height: 30vh;
+				background-color: #353535;
 				color: #29f529;
 				font-size: 10px;
 				padding: 5px;
 				display: grid;
-				grid-template: "disasm registers mem  "
-							   "disasm     .     mem  "
-							   "   .       .    stack";
+				grid-template: " btns    btns    btns" 30px
+								"disasm registers mem " 150px
+								"disasm   stack   mem "/auto 80px auto;
+				grid-gap: 10px;
 			}
 			#disasm {
 				grid-area: disasm;
 				display: grid;
 			    grid-gap: 3px;
-				grid-template-columns: 250px;
+				grid-template-columns: 350px;
+    			grid-auto-rows: min-content;
+			}
+			#btns {
+				grid-area: btns;
+				background-color: #ffffff;
+				display: grid;
+				grid-auto-flow: column;
+				align-items: center;
+    			grid-auto-columns: min-content;
+				grid-gap: 0 14px;
+			}
+			.btn {
+				cursor: pointer;				
+			}
+			.icn.btn {
+				width: 20px;
+			}
+			.btn.running.paused {
+				cursor: default;				
+				opacity: .3;
+			}
+			.btn.running.play {
+				display: none;				
+			}
+			.btn.pause:not(.running) {
+				display: none;				
 			}
 			#registers {
 				grid-area: registers;
+				display: grid;
+				grid-template-rows: repeat(5,20px);
+				grid-template-columns: 30px auto;
+				grid-auto-rows: min-content;
+				justify-items: center;
+			}
+			.register {
+				cursor: pointer;
+			}
+			.p.register {
+				display: grid;
+				grid-auto-flow: column;
+				grid-column: span 2;
+				grid-gap: 2px;		
+				padding: 7px;		
 			}
 			#mem {
 				grid-area: mem;
+				display: grid;
+				grid-gap: 3px;
+				grid-auto-rows: min-content;
 			}
 			#stack {
 				grid-area: stack;
-			}
-			#a:before {
-				content: "A: ";
-			}
-			#x:before {
-				content: "X: ";
-			}
-			#y:before {
-				content: "Y: ";
-			}
-			#pc:before {
-				content: "PC: ";
 			}
 			.selected {
 				color: white;
@@ -61,37 +93,32 @@
 	<body>
 		<canvas id="screen"></canvas>
 		<div id="debugger">
-			<div id="mem">
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-				0400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-			</div>
+			<div id="mem"></div>
 			<div id="disasm"></div>
-			<div id="stack">
-				1F8: 00
-				1F9: 00
-				1FA: 00
-				1FB: 00
-				1FC: 00
-				1FD: 00
-				1FE: 00
-				1FF: 00
-			</div>
+			<div id="stack"></div>
 			<div id="registers">
-				<div id="a">00</div>
-				<div id="x">00</div>
-				<div id="y">00</div>
-				<div id="pc">0000</div>
-				<div id="s">00</div>
+				<div>A</div><div class="register" id="a"></div>
+				<div>X</div><div class="register" id="x"></div>
+				<div>Y</div><div class="register" id="y"></div>
+				<div>PC</div><div class="register" id="pc"></div>
+				<div>S</div><div class="register" id="s"></div>
+				<div>P</div><div class="register" id="p"></div>
+				<div class="p register">
+					<div id="n" class="status"><div>N</div><div class="flag"></div></div>
+					<div id="v" class="status"><div>V</div><div class="flag"></div></div>
+					<div id="d" class="status"><div>D</div><div class="flag"></div></div>
+					<div id="i" class="status"><div>I</div><div class="flag"></div></div>
+					<div id="z" class="status"><div>Z</div><div class="flag"></div></div>
+					<div id="c" class="status"><div>C</div><div class="flag"></div></div>
+				</div>
 			</div>
-			<div>
-				<button id="pause" class="btn">PAUSE</button>
-				<button id="step" class="btn">STEP</button>
+			<div id="btns">
+				<div></div>
+				<img id="play" class="icn btn play" src="/assets/icons/debug_play.svg" />
+				<img id="pause" class="icn btn pause" src="/assets/icons/debug_pause.svg" />
+				<img id="step_over" class="icn btn paused" src="/assets/icons/debug_step_over.svg" />
+				<img id="step_into" class="icn btn paused" src="/assets/icons/debug_step_into.svg" />
+				<img id="step_out" class="icn btn paused" src="/assets/icons/debug_step_out.svg" />
 			</div>
 		</div>
 	</body>
