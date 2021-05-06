@@ -7,5 +7,9 @@ module.exports= merge(common, {
 	devServer: {
 		port: 3000,
 		overlay: true,
+		headers: {
+			"Cross-Origin-Embedder-Policy": "require-corp",
+			"Cross-Origin-Opener-Policy": "same-origin"
+		},
 	},
 });

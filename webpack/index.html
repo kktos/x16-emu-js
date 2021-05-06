@@ -1,7 +1,7 @@
 <html>
 	<head>
 		<style>
-			@font-face { font-family: PrintChar21; src: url("/assets/fonts/PrintChar21.ttf"); } 
+			@font-face { font-family: PrintChar21; src: url("/assets/fonts/PrintChar21.ttf"); }
 			BODY {
 				font-family: PrintChar21;
 				position: absolute;
@@ -43,20 +43,20 @@
 				grid-gap: 0 14px;
 			}
 			.btn {
-				cursor: pointer;				
+				cursor: pointer;
 			}
 			.icn.btn {
 				width: 20px;
 			}
 			.btn.running.paused {
-				cursor: default;				
+				cursor: default;
 				opacity: .3;
 			}
 			.btn.running.play {
-				display: none;				
+				display: none;
 			}
 			.btn.pause:not(.running) {
-				display: none;				
+				display: none;
 			}
 			#registers {
 				grid-area: registers;
@@ -73,8 +73,8 @@
 				display: grid;
 				grid-auto-flow: column;
 				grid-column: span 2;
-				grid-gap: 2px;		
-				padding: 7px;		
+				grid-gap: 2px;
+				padding: 7px;
 			}
 			#mem {
 				grid-area: mem;
@@ -87,6 +87,13 @@
 			}
 			.selected {
 				color: white;
+			}
+			INPUT {
+				width: 40px;
+    			text-align: right;
+			}
+			.label {
+				color: #000000;
 			}
 		</style>
 	</head>
@@ -119,6 +126,9 @@
 				<img id="step_over" class="icn btn paused" src="/assets/icons/debug_step_over.svg" />
 				<img id="step_into" class="icn btn paused" src="/assets/icons/debug_step_into.svg" />
 				<img id="step_out" class="icn btn paused" src="/assets/icons/debug_step_out.svg" />
+				<div></div>
+				<input type="number" id="speed" value="1" step="0.1">
+				<div class="label">MHz</div>
 			</div>
 		</div>
 	</body>

@@ -1,4 +1,3 @@
-import {TEXT_LINES} from "./apple2-monitor.js";
 import * as utils from "./utils.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
@@ -49,13 +48,24 @@ export default class Debugger {
 				btn.addEventListener("click", (e) => this.onClickBtn(e));
 			});
 
+		this.uiroot
+			.querySelectorAll("INPUT")
+			.forEach(btn => {
+				btn.addEventListener("change", (e) => this.onChange(e));
+			});
+
 		this.updateBtns(false);
 	}
 
+	onChange(e) {
+		switch(e.target.id) {
+			case "speed":
+				this.vm.setSpeed(e.target.value);
+				break;
+		}
+	}
+
 	onClickBtn(e) {
-
-		console.log(e.target.id);
-
 		switch(e.target.id) {
 			case "play":
 				this.updateBtns(false);
@@ -92,7 +102,7 @@ export default class Debugger {
 				else {
 					btn.classList.remove("running");
 				}
-			});		
+			});
 	}
 
 	onPageMem(e) {
@@ -214,14 +224,14 @@ export default class Debugger {
 		this.registers.a.innerHTML= utils.hexbyte(this.cpu.a);
 		this.registers.x.innerHTML= utils.hexbyte(this.cpu.x);
 		this.registers.y.innerHTML= utils.hexbyte(this.cpu.y);
-		this.registers.s.innerHTML= utils.hexbyte(this.cpu.s);
+		this.registers.s.innerHTML= utils.hexword(0x100 | this.cpu.s);
 		this.registers.p.innerHTML= utils.hexbyte(this.cpu.p.asByte());
 
 		this.uiroot.querySelectorAll(".p.register .status").forEach((el) => {
 			el.querySelector(".flag").innerHTML= this.cpu.p[el.id] ? 1 : 0;
 		});
 	}
-	
+
 	update() {
 		this.updateStack();
 		this.updateRegisters();

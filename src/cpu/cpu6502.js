@@ -1,4 +1,4 @@
-import Core6502 from "./core6502";
+import Core6502 from "./core6502.js";
 
 export default class Cpu6502 extends Core6502 {
 

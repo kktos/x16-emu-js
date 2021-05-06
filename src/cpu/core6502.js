@@ -1,6 +1,7 @@
 import * as utils from "../utils.js";
-import opcodes from "./opcodes6502.js";
 import Flags from "./flags6502.js";
+import Runner from "./runner.js";
+import Disassembler from "./disassembler.js";
 
 export default class Core6502 {
 	constructor(model, bus) {
@@ -10,9 +11,8 @@ export default class Core6502 {
 		this.pc= 0;
 		this.nmi= false;
 		this.p= new Flags();
-		this.opcodes= model.nmos ? opcodes.cpu6502(this) : opcodes.cpu65c12(this);
-		this.runner= this.opcodes.runInstruction;
-		this.disassembler= new this.opcodes.Disassemble(this);
+		this.runner= new Runner(this);
+		this.disassembler= new Disassembler(this);
 		this.forceTracing= false;
 	}
 
