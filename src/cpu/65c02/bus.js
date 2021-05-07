@@ -1,4 +1,9 @@
-import KeyMap from "../keymap.js";
+import KeyMap from "../../keymap.js";
+
+/*
+http://www.lazilong.com/apple_II/bbros/ascii.jpg
+ */
+
 export default class Bus {
 	constructor(gc, buffer) {
 		this.gc= gc;
@@ -8,11 +13,7 @@ export default class Bus {
 		this.keys= new KeyMap();
 	}
 
-	cpuPeek(addr) {
-		return this.cpuRead(addr);
-	}
-
-	cpuRead(addr) {
+	read(addr) {
 		addr= addr & 0xFFFF;
 
 		if(addr==0xC000) {
@@ -26,14 +27,30 @@ export default class Bus {
 
 			console.log(keyPressed);
 
-			this.keyWasRead= true;
 			this.keys.get(keyPressed[0]);
 			switch(keyPressed[0]) {
+				case "Alt":
+				case "AltGraph":
+				case "CapsLock":
+				case "Meta":
+				case "Shift":
+				case "Control":
+					return this.lastKeypressed;
+
+				case "ArrowDown":
+					this.lastKeypressed= 0x8A;
+					break;
+				case "ArrowUp":
+					this.lastKeypressed= 0x8B;
+					break;
 				case "ArrowLeft":
 					this.lastKeypressed= 0x88;
 					break;
 				case "ArrowRight":
 					this.lastKeypressed= 0x95;
+					break;
+				case "Tab":
+					this.lastKeypressed= 0x88;
 					break;
 				case "Escape":
 					this.lastKeypressed= 0x9B;
@@ -49,6 +66,7 @@ export default class Bus {
 					break;
 			}
 
+			this.keyWasRead= true;
 			return this.lastKeypressed | 0x80;
 		}
 		if(addr==0xC010) {
@@ -58,19 +76,19 @@ export default class Bus {
 		return this.ram[addr];
 	}
 
-	cpuWrite(addr, value) {
+	write(addr, value) {
 		this.ram[addr&0xFFFF]= value;
 	}
 
-	write(addr, hexString) {
+	writeHexa(addr, hexString) {
 		const values= hexString.match(/[0-9a-fA-F]+/g);
 		for(let idx= 0; idx<values.length; idx++)
-			this.cpuWrite(addr++, parseInt(values[idx],16));
+			this.write(addr++, parseInt(values[idx],16));
 		return addr;
 	}
 
 	writeString(addr, str) {
-		[...str].forEach(c => this.cpuWrite(addr++, c.charCodeAt(0)));
+		[...str].forEach(c => this.write(addr++, c.charCodeAt(0)));
 		return addr;
 	}
 

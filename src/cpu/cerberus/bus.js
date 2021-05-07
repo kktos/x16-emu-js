@@ -1,4 +1,4 @@
-import KeyMap from "../keymap.js";
+import KeyMap from "../../keymap.js";
 export default class Bus {
 	constructor(gc, buffer) {
 		this.gc= gc;
@@ -8,11 +8,7 @@ export default class Bus {
 		this.keys= new KeyMap();
 	}
 
-	cpuPeek(addr) {
-		return this.cpuRead(addr);
-	}
-
-	cpuRead(addr) {
+	read(addr) {
 		addr= addr & 0xFFFF;
 
 		if(addr==0xC000) {
@@ -58,19 +54,19 @@ export default class Bus {
 		return this.ram[addr];
 	}
 
-	cpuWrite(addr, value) {
+	write(addr, value) {
 		this.ram[addr&0xFFFF]= value;
 	}
 
-	write(addr, hexString) {
+	writeHexa(addr, hexString) {
 		const values= hexString.match(/[0-9a-fA-F]+/g);
 		for(let idx= 0; idx<values.length; idx++)
-			this.cpuWrite(addr++, parseInt(values[idx],16));
+			this.write(addr++, parseInt(values[idx],16));
 		return addr;
 	}
 
 	writeString(addr, str) {
-		[...str].forEach(c => this.cpuWrite(addr++, c.charCodeAt(0)));
+		[...str].forEach(c => this.write(addr++, c.charCodeAt(0)));
 		return addr;
 	}
 

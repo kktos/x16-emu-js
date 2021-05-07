@@ -14,10 +14,11 @@ const uncommonInstrucions= /.*,\s*([XY]|X\))$/;
 const DISASM_LINES_COUNT= 40;
 export default class Debugger {
 
-	constructor(vm, cpu) {
+	constructor(vm, memory) {
 		this.vm= vm;
-		this.cpu= cpu;
-		this.bus= cpu.bus;
+		// this.cpu= cpu;
+		// this.bus= cpu.bus;
+		this.memory= new Uint8Array(memory);
 
 		this.stepCount= Infinity;
 		this.stopOnOpcode= 0;

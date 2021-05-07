@@ -1,9 +1,5 @@
-import Bus from "./cpu/bus.js";
-import Cpu6502 from "./cpu/cpu6502.js"
-
-const model= {
-	nmos: true
-};
+import Bus from "./cpu/cerberus/bus.js";
+import CPU6502 from "./cpu/torlus/cpu.js";
 
 let lastTime= 0;
 let acc= 0;
@@ -20,32 +16,35 @@ self.cyclesPerFrame= OneMHz;
 
 function init(gc, buffer) {
 	self.bus= new Bus(gc, buffer);
-	cpu= new Cpu6502(model, self.bus);
-	self.cpu.reset(true);
+	self.cpu= new CPU6502();
+
+	cpu.read= function(addr) {
+		return self.bus.read(addr);
+	}
+	cpu.write= function(addr, value) {
+		self.bus.write(addr, value);
+	}
 }
 
 function loop(dt= 0) {
-	// loopCount++;
-	// if(loopCount%20)
-	// console.log(loopCount, self.cpu.pc.toString(16));
+	// const start= Date.now();
 
+	self.cpu.cycles= 0;
+	while(cpu.cycles < self.cyclesPerFrame) {
+		self.cpu.step();
+	}
 
-	// acc+= (dt - lastTime) / 1000;
-	// while(acc > inc) {
-		const isStopped= !self.cpu.execute(self.cyclesPerFrame);
-		// this.gc.tick++;
-		// acc-= inc;
-		if(isStopped) {
-			self.isRunning= false;
-			console.log("cpu stopped !");
-			// this.debugger.stop();
-			return;
-		}
-	// }
-	// lastTime= dt;
-	// self.isRunning && requestAnimationFrame(loop);
-	// console.log("requestAnimationFrame",requestAnimationFrame(loop));
 	setTimeout(loop, 1000*FPS);
+
+	// const timeSpent= Date.now() - start;
+	// const cyclesPerMs= 1/(timeSpent/cpu.cycles);
+	// const cyclesPerS= Math.round(cyclesPerMs*1000);
+	// const mhz= Math.round(cyclesPerMs/1000, 2);
+
+	// console.log(cpu.cycles, timeSpent, cyclesPerS, mhz);
+	// document.body.innerHTML="ran <b>"+cpu.cycles+"</b> cycles<br>";
+	// document.body.innerHTML+="took <b>"+timeSpent+"</b> miliseconds<br>";
+	// document.body.innerHTML+="<b>"+cyclesPerS+"</b> cycles per second or <b>"+mhz+"</b>Mhz<br>";
 
 }
 
@@ -71,7 +70,7 @@ onmessage= (evt) => {
 			break;
 
 		case "memWrite":
-			self.bus.write(evt.data.addr, evt.data.value);
+			self.bus.writeHexa(evt.data.addr, evt.data.value);
 			break;
 
 		case "start":

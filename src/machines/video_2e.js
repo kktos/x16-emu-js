@@ -1,8 +1,13 @@
-import {TEXT_LINES} from "./apple2-monitor.js";
+/*
+https://retrocomputing.stackexchange.com/questions/8652/why-did-the-original-apple-e-have-two-sets-of-inverse-video-characters
+
+apple 2 font : https://www.kreativekorp.com/software/fonts/apple2.shtml
+*/
+import {TEXT_LINES} from "./ram_map.js";
 
 export default class Video {
-	constructor(bus) {
-		this.bus= bus;
+	constructor(memory) {
+		this.memory= new Uint8Array(memory);
 	}
 
 	get width() {
@@ -24,7 +29,7 @@ export default class Video {
 		for(let line= 0; line<24; line++)
 			for(let column= 0; column<40; column++) {
 				const addr= TEXT_LINES[line]+column;
-				let ascii= this.bus.ram[addr];
+				let ascii= this.memory[addr];
 				if(ascii<=0x1F)
 					ascii+= 0xE140;
 				else
@@ -32,13 +37,14 @@ export default class Video {
 					ascii+= 0xE100;
 				else
 				if(ascii<=0x5F)
-					ascii+= ((tick/10)|0)%2 ? 0xE100 : 0 ;
+					ascii+= 0xE100;
 				else
 				if(ascii<=0x7F)
-					ascii+= -0x40 + ( ((tick/10)|0)%2 ? 0xE100 : 0 );
+					// ascii+= -0x40 + ( ((tick/10)|0)%2 ? 0xE100 : 0 );
+					ascii+= 0xE100;
 				else
-				if((ascii>=0xA0) && (ascii<=0xDF))
-					ascii= ascii - 0x80;
+				if(ascii>=0xA0)
+					ascii-= 0x80;
 				const char= String.fromCharCode(ascii);
 				ctx.fillText(char, x+(15*column), y+(22*line));
 			}
@@ -51,7 +57,7 @@ export default class Video {
 		// 	const addr= (TEXT_LINES[line]).toString(16).toUpperCase();
 		// 	ctx.fillText(addr.padStart(4, '0')+":", x, y+(16*line));
 		// 	for(let column= 0; column<40; column++) {
-		// 		const char= (this.bus.ram[TEXT_LINES[line]+column]).toString(16);
+		// 		const char= (this.memory[TEXT_LINES[line]+column]).toString(16);
 		// 		ctx.fillText(char.padStart(2, '0'), x+40+(15*column), y+(16*line));
 		// 	}
 		// }

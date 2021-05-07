@@ -1,9 +1,6 @@
-import Bus from "./cpu/bus.js";
-import Cpu6502 from "./cpu/cpu6502.js"
+import Bus from "./cpu/cerberus/bus.js";
+import {m6502} from './cpu/cerberus/m6502.js';
 
-const model= {
-	nmos: true
-};
 
 let lastTime= 0;
 let acc= 0;
@@ -20,31 +17,14 @@ self.cyclesPerFrame= OneMHz;
 
 function init(gc, buffer) {
 	self.bus= new Bus(gc, buffer);
-	cpu= new Cpu6502(model, self.bus);
-	self.cpu.reset(true);
+	self.cpu= new m6502();
+	self.cpu.init(self.bus, '65c02');
 }
 
 function loop(dt= 0) {
-	// loopCount++;
-	// if(loopCount%20)
-	// console.log(loopCount, self.cpu.pc.toString(16));
 
+	self.cpu.tick();
 
-	// acc+= (dt - lastTime) / 1000;
-	// while(acc > inc) {
-		const isStopped= !self.cpu.execute(self.cyclesPerFrame);
-		// this.gc.tick++;
-		// acc-= inc;
-		if(isStopped) {
-			self.isRunning= false;
-			console.log("cpu stopped !");
-			// this.debugger.stop();
-			return;
-		}
-	// }
-	// lastTime= dt;
-	// self.isRunning && requestAnimationFrame(loop);
-	// console.log("requestAnimationFrame",requestAnimationFrame(loop));
 	setTimeout(loop, 1000*FPS);
 
 }
@@ -71,7 +51,7 @@ onmessage= (evt) => {
 			break;
 
 		case "memWrite":
-			self.bus.write(evt.data.addr, evt.data.value);
+			self.bus.writeHexa(evt.data.addr, evt.data.value);
 			break;
 
 		case "start":
