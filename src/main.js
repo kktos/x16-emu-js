@@ -1,18 +1,17 @@
 import VM from "./vm.js";
 
 // import {MONITOR} from "./apple2-monitor.js";
-import {ADDR, ROM} from "./machines/apple2e_enhanced.js";
+// import machine from "./machines/apple2e-enhanced/machine.js";
+import machine from "./machines/apple2-plus/machine.js";
 
 const canvas= document.getElementById("screen");
-// canvas.width= window.innerWidth;
-// canvas.height= window.innerHeight;
 
-const vm= new VM(canvas);
+const vm= new VM(canvas, machine);
 
 // write the reset vector
 // vm.bus.write(0xFFFC, "00 08");
 
-vm.memWrite(ADDR, ROM);
+// vm.memWrite(ADDR, ROM);
 
 /**
 CH          =     $24

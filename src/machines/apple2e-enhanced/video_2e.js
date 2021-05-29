@@ -1,4 +1,9 @@
-import {TEXT_LINES} from "./ram_map.js";
+/*
+https://retrocomputing.stackexchange.com/questions/8652/why-did-the-original-apple-e-have-two-sets-of-inverse-video-characters
+
+apple 2 font : https://www.kreativekorp.com/software/fonts/apple2.shtml
+*/
+import {TEXT_LINES} from "../ram_map.js";
 
 export default class Video {
 	constructor(memory) {
@@ -32,13 +37,14 @@ export default class Video {
 					ascii+= 0xE100;
 				else
 				if(ascii<=0x5F)
-					ascii+= ((tick/10)|0)%2 ? 0xE100 : 0 ;
+					ascii+= 0xE100;
 				else
 				if(ascii<=0x7F)
-					ascii+= -0x40 + ( ((tick/10)|0)%2 ? 0xE100 : 0 );
+					// ascii+= -0x40 + ( ((tick/10)|0)%2 ? 0xE100 : 0 );
+					ascii+= 0xE100;
 				else
-				if((ascii>=0xA0) && (ascii<=0xDF))
-					ascii= ascii - 0x80;
+				if(ascii>=0xA0)
+					ascii-= 0x80;
 				const char= String.fromCharCode(ascii);
 				ctx.fillText(char, x+(15*column), y+(22*line));
 			}

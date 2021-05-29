@@ -1,4 +1,5 @@
 import * as utils from "./utils.js";
+import Disassembler from "./cpu/disassembler.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
 // up to the target by counting all "common" instructions as a point. The highest-scoring run of
@@ -16,23 +17,25 @@ export default class Debugger {
 
 	constructor(vm, memory) {
 		this.vm= vm;
-		// this.cpu= cpu;
-		// this.bus= cpu.bus;
 		this.memory= new Uint8Array(memory);
+		this.disassembler= new Disassembler(memory);
 
 		this.stepCount= Infinity;
 		this.stopOnOpcode= 0;
-
 		this.dumpAddr= 0;
 
+		this.setupUI();
+	}
+
+	setupUI() {
 		this.uiroot= document.querySelector("#debugger");
 		this.registers= {
-			pc: this.uiroot.querySelector("#registers #pc"),
-			a: this.uiroot.querySelector("#registers #a"),
-			x: this.uiroot.querySelector("#registers #x"),
-			y: this.uiroot.querySelector("#registers #y"),
-			s: this.uiroot.querySelector("#registers #s"),
-			p: this.uiroot.querySelector("#registers #p")
+			pc: this.uiroot.querySelector("#registers #PC"),
+			a: this.uiroot.querySelector("#registers #A"),
+			x: this.uiroot.querySelector("#registers #X"),
+			y: this.uiroot.querySelector("#registers #Y"),
+			sp: this.uiroot.querySelector("#registers #SP"),
+			p: this.uiroot.querySelector("#registers #P")
 		}
 
 		this.uiroot
@@ -74,23 +77,29 @@ export default class Debugger {
 				break;
 
 			case "pause":
-				this.updateBtns(true);
-				this.vm.pause();
-				this.update();
+				this.pause();
 				break;
 
 			case "step_out":
-				this.stopOnOpcode= 0x60;
-				this.vm.play();
-				// this.update();
+				this.vm.stepOut();
+				break;
+
+			case "step_over":
+				this.vm.stepOver();
+				this.update();
 				break;
 
 			case "step_into":
-				this.step();
-				this.vm.play();
+				this.vm.step();
 				this.update();
 				break;
 		}
+	}
+
+	pause() {
+		this.updateBtns(true);
+		this.vm.pause();
+		this.update();
 	}
 
 	updateBtns(isPaused) {
@@ -115,7 +124,8 @@ export default class Debugger {
 
 		if(e.target.className == "register") {
 			let value= prompt("Hexa value for register "+e.target.id);
-			this.cpu[e.target.id]= parseInt(value, 16);
+			this.vm.updateCPUregister(e.target.id, parseInt(value, 16));
+			// this.cpu[e.target.id]= parseInt(value, 16);
 		}
 		else {
 			const target= e.target.parentElement;
@@ -126,22 +136,22 @@ export default class Debugger {
 		this.update();
 	}
 
-	onInstruction(pc, opcode) {
-		return 	!this.stepCount--
-				|| opcode == 0x00
-				|| (this.stopOnOpcode? opcode == this.stopOnOpcode : false);
-	}
+	// onInstruction(pc, opcode) {
+	// 	return 	!this.stepCount--
+	// 			|| opcode == 0x00
+	// 			|| (this.stopOnOpcode? opcode == this.stopOnOpcode : false);
+	// }
 
-	step() {
-		this.stepCount= 1;
-	}
+	// step() {
+	// 	this.stepCount= 1;
+	// }
 
 	stop() {
 		this.stopOnOpcode= 0;
 		this.update();
 	}
 
-	prevInstruction(address) {
+	prevInstruction(cpuState, address) {
 		address &= 0xffff;
 		let bestAddr= address - 1;
 		let bestScore= 0;
@@ -149,8 +159,8 @@ export default class Debugger {
 			let score= 0;
 			let addr= startingPoint & 0xffff;
 			while (addr < address) {
-				let result= this.cpu.disassembler.disassemble(addr);
-				if (result[0] === this.cpu.pc) score += 10; // huge boost if this instruction was executed
+				let result= this.disassembler.disassemble(addr);
+				if (result[0] === cpuState.PC) score += 10; // huge boost if this instruction was executed
 				if (result[0].match(commonInstructions) && !result[0].match(uncommonInstrucions)) {
 					score++;
 				}
@@ -167,7 +177,7 @@ export default class Debugger {
 		return bestAddr;
 	}
 
-	updateDisasm() {
+	updateDisasm(cpuState) {
 		const buildLine= (addr, asm, selected= false) => {
 			return `
 				<div class="${selected?"selected":""}">
@@ -177,16 +187,16 @@ export default class Debugger {
 		};
 
 		let disasmStr= "";
-		let addr= this.cpu.pc;
+		let addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			const rez= this.cpu.disassembler.disassemble(addr, true);
-			disasmStr+= buildLine(addr, rez[0], addr==this.cpu.pc);
+			const rez= this.disassembler.disassemble(addr, true);
+			disasmStr+= buildLine(addr, rez[0], addr==cpuState.PC);
 			addr= rez[1];
 		}
-		addr= this.cpu.pc;
+		addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			addr= this.prevInstruction(addr);
-			const rez= this.cpu.disassembler.disassemble(addr, true);
+			addr= this.prevInstruction(cpuState, addr);
+			const rez= this.disassembler.disassemble(addr, true);
 			disasmStr= buildLine(addr, rez[0]) + disasmStr;
 		}
 
@@ -199,7 +209,9 @@ export default class Debugger {
 			const addr= this.dumpAddr + line*16;
 			dumpStr+= `<div>${utils.hexword(addr)}:`;
 			for(let column= 0; column<16; column++) {
-				const char= utils.hexbyte(this.bus.ram[addr+column]);
+				// const char= utils.hexbyte(this.bus.ram[addr+column]);
+				// const char= utils.hexbyte(this.memory[addr+column]);
+				const char= utils.hexbyte(this.disassembler.readbyte(addr+column));
 				dumpStr+= " "+char;
 			}
 			dumpStr+= "</div>";
@@ -207,37 +219,41 @@ export default class Debugger {
 		document.querySelector("#debugger #mem").innerHTML= dumpStr;
 	}
 
-	updateStack() {
+	updateStack(cpuState) {
 		let dumpStr= "";
-		let stackAddr= (this.cpu.s-15) & 0xff;
-		const currentSP= 0x100 | this.cpu.s;
+		let stackAddr= (cpuState.SP-15) & 0xff;
+		const currentSP= 0x100 | cpuState.SP;
 		for(let line= 0; line<30; line++) {
 			const addr= 0x100 | (stackAddr + line);
 			dumpStr+= `<div class="${addr == currentSP?"selected":""}">
-							${utils.hexword(addr)}: ${utils.hexbyte(this.bus.ram[addr])}
+							${utils.hexword(addr)}: ${utils.hexbyte(this.memory[addr])}
 						</div>`;
+			// ${utils.hexword(addr)}: ${utils.hexbyte(this.bus.ram[addr])}
 		}
 		document.querySelector("#debugger #stack").innerHTML= dumpStr;
 	}
 
-	updateRegisters() {
-		this.registers.pc.innerHTML= utils.hexword(this.cpu.pc);
-		this.registers.a.innerHTML= utils.hexbyte(this.cpu.a);
-		this.registers.x.innerHTML= utils.hexbyte(this.cpu.x);
-		this.registers.y.innerHTML= utils.hexbyte(this.cpu.y);
-		this.registers.s.innerHTML= utils.hexword(0x100 | this.cpu.s);
-		this.registers.p.innerHTML= utils.hexbyte(this.cpu.p.asByte());
+	updateRegisters(cpuState) {
+		this.registers.pc.innerHTML= utils.hexword(cpuState.PC);
+		this.registers.a.innerHTML= utils.hexbyte(cpuState.A);
+		this.registers.x.innerHTML= utils.hexbyte(cpuState.X);
+		this.registers.y.innerHTML= utils.hexbyte(cpuState.Y);
+		this.registers.sp.innerHTML= utils.hexword(0x100 | cpuState.SP);
+		// this.registers.p.innerHTML= utils.hexbyte(cpuState.p.asByte());
 
 		this.uiroot.querySelectorAll(".p.register .status").forEach((el) => {
-			el.querySelector(".flag").innerHTML= this.cpu.p[el.id] ? 1 : 0;
+			el.querySelector(".flag").innerHTML= cpuState.P[el.id] ? 1 : 0;
 		});
 	}
 
-	update() {
-		this.updateStack();
-		this.updateRegisters();
+	async update() {
+		const {data: cpuState}= await this.vm.getCPUstate();
+		console.log({cpuState});
+
+		this.updateStack(cpuState);
+		this.updateRegisters(cpuState);
 		this.updateMem();
-		this.updateDisasm();
+		this.updateDisasm(cpuState);
 
 	}
 

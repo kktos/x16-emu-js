@@ -3,16 +3,16 @@ import KeyMap from "./keymap.js";
 // import Cpu6502 from "./cpu/cpu6502.js"
 // import Bus from "./cpu/bus.js";
 import Debugger from "./debugger.js";
-import Video from "./machines/video_2e.js";
 
 let lastTime= 0;
 let acc= 0;
 let inc= ENV.FPS;
+let msgcounter= 0;
 
 const OneMHz= 1_000_000 * ENV.FPS | 0;
 export default class VM {
 
-	constructor(canvas) {
+	constructor(canvas, machine) {
 		this.canvas= canvas;
 		this.isRunning= true;
 
@@ -31,14 +31,9 @@ export default class VM {
 
 		this.memory= new SharedArrayBuffer(64 * 1024);
 		this.worker= new Worker(new URL('./cpu/65c02/emu6502.js', import.meta.url));
-		this.worker.addEventListener('message', (e) => console.log("WORKER",e), false);
-		// this.worker.postMessage({
-		// 	type:"init",
-		// 	buffer: this.memory,
-		// 	gc: {}
-		// });
-		this.worker.postMessage({
-			cmd:"setup",
+		this.worker.addEventListener('message', (e) => this.handleMessage(e.data), false);
+
+		this.sendMessage("setup", {
 			buffer: this.memory,
 			gc: {},
 			NMOS_mode: true
@@ -59,14 +54,21 @@ export default class VM {
 
 		// this.cpu._debugInstruction= this.debugger.onInstruction.bind(this.debugger);
 
-		this.video= new Video(this.memory);
+		this.video= new machine.Video(this.memory);
 		this.canvas.width= this.video.width;
 		this.canvas.height= this.video.height;
+
+		this.setupMemoryMap(machine);
+	}
+
+	setupMemoryMap(machine) {
+		machine.memory.forEach(({addr, data}) => {
+			this.memWrite(addr, data);
+		});
 	}
 
 	memWrite(addr, value) {
-		this.worker.postMessage({
-			cmd: "memWrite",
+		this.sendMessage("memWrite", {
 			addr,
 			value
 		});
@@ -79,8 +81,7 @@ export default class VM {
 	setSpeed(multiplier) {
 		// this.cpuMultiplier= multiplier;
 		// this.cyclesPerFrame= multiplier * OneMHz;
-		this.worker.postMessage({
-			cmd: "setSpeed",
+		this.sendMessage("setSpeed", {
 			speed: multiplier
 		});
 	}
@@ -88,35 +89,70 @@ export default class VM {
 	loop(dt= 0) {
 		acc+= (dt - lastTime) / 1000;
 		while(acc > inc) {
-			// const isStopped= !this.cpu.execute(this.cyclesPerFrame);
 			this.video.update(this.gc, this.cyclesPerFrame);
 			this.gc.tick++;
 			acc-= inc;
-			// if(isStopped) {
-			// 	this.isRunning= false;
-			// 	this.debugger.stop();
-			// 	return;
-			// }
 		}
 		lastTime= dt;
 		this.isRunning && requestAnimationFrame((dt)=> this.loop(dt));
 	}
 
+	handleMessage(msg) {
+		console.log("handleMessage", msg);
+
+		switch(msg.cmd) {
+			case "stopped":
+				this.debugger.pause();
+				break;
+		}
+	}
+
+	waitMessage(cmd, data= null) {
+		const msgID= msgcounter++;
+		return new Promise(resolve => {
+			this.worker.postMessage({cmd, id: msgID, data});
+			const listener= this.worker.addEventListener('message', (e) => {
+				if(e.data.id==msgID) {
+					this.worker.removeEventListener('message', listener);
+					resolve(e.data);
+				}
+			});
+		})
+	}
+
+	sendMessage(cmd, data= null) {
+		this.worker.postMessage({cmd, id: msgcounter++, data});
+	}
+
+	getCPUstate() {
+		return this.waitMessage("update");
+	}
+
+	updateCPUregister(register, value) {
+		this.sendMessage("register", {register, value});
+	}
+
 	pause() {
-		this.worker.postMessage({
-			cmd: "stop"
-		});
+		this.sendMessage("stop");
 		this.isRunning= false;
 	}
 
 	play() {
 		this.isRunning= true;
 		this.loop();
+		this.sendMessage("run");
+	}
 
-		this.worker.postMessage({
-			cmd: "run"
-		});
+	step() {
+		this.sendMessage("step");
+	}
 
+	stepOut() {
+		this.sendMessage("stepOut");
+	}
+
+	stepOver() {
+		this.sendMessage("stepOver");
 	}
 
 	handleEvent(e) {
@@ -126,12 +162,7 @@ export default class VM {
 		switch(e.type) {
 			case "keyup":
 			case "keydown":
-				// this.gc.keys.set(e.key, e.type == "keydown");
-				this.worker.postMessage({
-					cmd: e.type,
-					key: e.key
-				});
-
+				this.sendMessage(e.type, {key: e.key});
 				break;
 		}
 
@@ -143,12 +174,7 @@ export default class VM {
 			"keyup", "keydown",
 		].forEach(type=> window.addEventListener(type, this));
 
-		this.worker.postMessage({
-			cmd: "reset"
-		});
-		this.worker.postMessage({
-			cmd: "update"
-		});
+		this.sendMessage("reset");
 
 		this.play();
 

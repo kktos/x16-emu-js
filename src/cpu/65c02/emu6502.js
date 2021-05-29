@@ -133,6 +133,14 @@ let debugBuffer=[];
 let cycleLog="";
 let cycleLogActivated=false;
 
+const breakpoints= [
+	0xFDED
+];
+let tempBP= 0;
+let jsrLevel= 0;
+let stopAtjsrLevel= 0;
+let wannaStopOnRTS= false;
+
 //Wait for top level html to pass path of hex file
 //setup();
 //Initialize message loop here instead of setup
@@ -148,26 +156,53 @@ function* cycle10_6()
 {
 	do
 	{
-		//for (i=0;i<1000000;i++) //works but typing is slow
-		for (let i=0; i<100000; i++) //more responsive?
-			if(running==1) {
-				calcAddress=-1;
+		for(let i=0; i<100_000; i++)
+			if(running) {
+				calcAddress= -1;
 				// if (cycleLogActivated) recordCycle();
 				// else
-				opList[bus.read(PC++)]();
+				if(PC == tempBP || breakpoints.includes(PC)) {
+					tempBP= 0;
+					running= 0;
+					self.postMessage({cmd:"stopped", PC});
+					yield;
+				}
+
+				const op= bus.read(PC);
+
+				if(op == 0x20) {
+					jsrLevel++;
+					// console.log(PC.toString(16),"JSR", (bus.read(PC+1)+(bus.read(PC+2)<<8)).toString(16), jsrLevel);
+				}
+
+				if(op == 0x60) {
+					// console.log(PC.toString(16),"RTS", (bus.read(0x100|SP+1)+1+(bus.read(0x100|SP+2)<<8)).toString(16), jsrLevel-1);
+					if(wannaStopOnRTS && stopAtjsrLevel == jsrLevel) {
+						wannaStopOnRTS= false;
+						running= 0;
+						self.postMessage({cmd:"stopped", PC});
+						yield;
+					}
+					jsrLevel--;
+				}
+
+				PC++;
+				opList[op]();
 			}
 		yield;
 	} while(true);
 }
 
-let cycleGen=cycle10_6();
+
+const cycleGen= cycle10_6();
 
 function cycleFunc()
 {
-	let obj=cycleGen.next();
-	if ((obj.done==false)&&(running==1)) setTimeout(cycleFunc, 0);
+	let obj= cycleGen.next();
+	if(!obj.done && running)
+		setTimeout(cycleFunc, 0);
 }
-/*
+
 function recordCycle()
 {
 	//cycleLog+=cycle_count.toString().toUpperCase().padStart(12,"0")+"  ";
@@ -201,70 +236,112 @@ function recordCycle()
 	cycleLog+="\n";
 	if (op==0) cycleLog+="\n";
 }
-*/
+
 
 //**************
 //*MESSAGE LOOP*
 //**************
 
-function OnMessage(e)
+function OnMessage({data:{cmd, id, data}})
 {
-	console.log("OnMessage",e.data);
+	console.log("FROM MAIN", cmd, id, data);
 
 	debugflag= '';
-	switch (e.data.cmd)
-	{
+	switch(cmd) {
+
 		case 'setup':
-			setup(e.data.gc,e.data.buffer,e.data.NMOS_mode);
+			setup(data.gc, data.buffer, data.NMOS_mode);
 			break;
 
-		case 'debug':
-			if (debugBuffer.length!=0)
-			{
-				self.postMessage({cmd:"debug",debugBuffer});
-				debugBuffer=[];
-			}
-			break;
+		// case 'debug':
+		// 	if (debugBuffer.length!=0)
+		// 	{
+		// 		self.postMessage({cmd:"debug",debugBuffer});
+		// 		debugBuffer=[];
+		// 	}
+		// 	break;
 
 		case "memWrite":
-			bus.writeHexa(e.data.addr, e.data.value);
+			bus.writeHexa(data.addr, data.value);
 			break;
 
-		case 'cycles':
-			self.postMessage({cmd:"cycles",cycle_count});
+		case "dumpRam":
+			dumpMem(data.addr);
 			break;
 
-		case 'single':
-			//debugflag='<br>Start PC: ' + PC.toString(16).toUpperCase() + '(' + bus.read(PC).toString(16).toUpperCase() + ')'
-			calcAddress=-1;
-			if (cycleLogActivated) recordCycle();
-			else opList[bus.read(PC++)]();
-			//debugflag+='<br>End PC: ' + PC.toString(16).toUpperCase() + '(' + bus.read(PC).toString(16).toUpperCase() + ')'
-			//break;
+		// case 'cycles':
+		// 	self.postMessage({cmd:"cycles",cycle_count});
+		// 	break;
+
+		case 'step':
+			step();
+			break;
+
+		case 'stepOver':
+			if(0x20 == bus.read(PC)) {
+				tempBP= PC + 3;
+				run();
+			} else
+				step();
+			break;
+
+		case 'stepOut': {
+			wannaStopOnRTS= true;
+			stopAtjsrLevel= jsrLevel;
+
+			console.log('stepOut', PC.toString(16), jsrLevel);
+
+			run();
+			break;
+		}
+
+		case 'register': {
+			const {register, value}= data;
+			switch(register) {
+				case "PC":
+					PC= value;
+					break;
+				case "A":
+					AbortController= value;
+					break;
+				case "X":
+					X= value;
+					break;
+				case "Y":
+					Y= value;
+					break;
+				case "SP":
+					SP= value & 0xFF;
+					break;
+				default:
+					self.postMessage({cmd: "error", error: `unknown register "${register}"` });
+			}
+			break;
+		}
 
 		case 'update':
-			debugflag+='Cycles: ' + cycle_count;
-			const updateData= {
-				cmd:'update',PC,A,X,Y,SP,FlagC,
-				FlagZ,FlagI,FlagD,FlagB,FlagV,FlagN,debugflag,
-				calcAddress
+			const P= {
+				c: FlagC,
+				z: FlagZ,
+				i: FlagI,
+				d: FlagD,
+				b: FlagB,
+				v: FlagV,
+				n: FlagN
 			};
-			self.postMessage(updateData);
-			console.log(updateData);
+			const updateData= {
+				PC, A, X, Y, SP, P,
+				cycle_count, calcAddress
+			};
+			self.postMessage({cmd: "update", id: id, data: updateData });
 			break;
 
 		case 'run':
-			if (running==0)
-			{
-				//self.postMessage({cmd:"msgbox",msg:"begin running"});
-				running= 1;
-				cycleFunc();
-			}
-			//else self.postMessage({cmd:"msgbox",msg:"did not begin running"});
+			run();
 			break;
 
 		case 'stop':
-			if (running==1)
+			if(running)
 			{
 				//self.postMessage({cmd:"msgbox",msg:"begin stopping"});
 				running= 0;
@@ -280,26 +357,58 @@ function OnMessage(e)
 			break;
 
 		case 'keys':
-			keyBuffer= keyBuffer.concat(e.data.keys);
+			keyBuffer= keyBuffer.concat(data.keys);
 			break;
 
 		case "keydown":
 		case "keyup":
-			bus.keys.set(e.data.key, e.data.cmd == "keydown");
+			bus.keys.set(data.key, cmd == "keydown");
 			break;
 
-		case 'reset cycles':
-			cycle_count= 0;
-			break;
+		// case 'reset cycles':
+		// 	cycle_count= 0;
+		// 	break;
 
-		case 'cycle table':
-			self.postMessage({cmd:'cycle table',cycleLog});
-			break;
+		// case 'cycle table':
+		// 	self.postMessage({cmd:'cycle table',cycleLog});
+		// 	break;
 
-		case 'cycle log on':
-			cycleLogActivated= true;
-			break;
+		// case 'cycle log on':
+		// 	cycleLogActivated= true;
+		// 	break;
 	}
+}
+
+function run() {
+	if(!running) {
+		running= 1;
+		cycleFunc();
+	}
+}
+function step() {
+	const op= bus.read(PC++);
+	if(op == 0x20)
+		jsrLevel++;
+	if(op == 0x60)
+		jsrLevel--;
+	calcAddress=-1;
+	opList[op]();
+}
+
+function dumpMem(addr) {
+	const hexword= function(value) {
+		return hexbyte(value >>> 8) + hexbyte(value & 0xff);
+	}
+	const hexbyte= function(value) {
+		return (((value >>> 4) & 0xf).toString(16) + (value & 0xf).toString(16)).toUpperCase();
+	}
+	let dumpStr= `${hexword(addr)}:`;
+	for(let column= 0; column<16; column++) {
+		const char= hexbyte(bus.ram[addr+column]);
+		dumpStr+= " "+char;
+	}
+	console.log(dumpStr);
+	// return dumpStr;
 }
 
 //****************
@@ -1192,9 +1301,8 @@ function opBRK()													//0x00
 	//FlagB=0;
 	//PC--;
 	PC++;
-	if (running==1)
-	{
-		running=0;
+	if(running) {
+		running= 0;
 		self.postMessage({cmd:"stopped", op:"BRK", PC});
 	}
 	cycle_count+=7;
@@ -1466,9 +1574,8 @@ function opJMP_I()													//0x6C
 		//Keep PC on this instruction for debugging
 		PC--;
 
-		if (running==1)
-		{
-			running=0;
+		if(running) {
+			running= 0;
 			self.postMessage({cmd:"stopped"});
 		}
 
@@ -2106,7 +2213,7 @@ function disassemble(byteList)
 {
 	//$ = byte
 	//% = word
-	instructions=[
+	const instructions =[
 		"BRK",			//opBRK,			//0x00
 		"ORA ($,X)",	//opORA_IX,			//0x01
 		"NOP",			//opNOP_IMMED,		//0x02

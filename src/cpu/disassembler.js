@@ -11,12 +11,16 @@ function formatJumpAddr(addr) {
 
 export default class Disassembler {
 
-	constructor(cpu) {
-		this.cpu= cpu;
+	constructor(memory) {
+		this.memory= new Uint8Array(memory);
+	}
+
+	readbyte(addr) {
+		return this.memory[addr&0xFFFF];
 	}
 
 	disassemble(addr) {
-		let opcode = opcodes[this.cpu.bus.cpuPeek(addr)];
+		let opcode = opcodes[this.readbyte(addr)];
 		if (!opcode) {
 			return ["???", addr + 1];
 		}
@@ -36,35 +40,35 @@ export default class Disassembler {
 		}
 		switch (param) {
 			case "imm":
-				return [split[0] + " #$" + utils.hexbyte(this.cpu.bus.cpuPeek(addr + 1)) + suffix, addr + 2];
+				return [split[0] + " #$" + utils.hexbyte(this.readbyte(addr + 1)) + suffix, addr + 2];
 			case "abs":
 				let formatter = (split[0] === "JMP" || split[0] === "JSR") ? formatJumpAddr : formatAddr;
-				destAddr = this.cpu.bus.cpuPeek(addr + 1) | (this.cpu.bus.cpuPeek(addr + 2) << 8);
+				destAddr = this.readbyte(addr + 1) | (this.readbyte(addr + 2) << 8);
 				return [split[0] + " $" + formatter(destAddr) + suffix, addr + 3, destAddr];
 			case "branch":
-				destAddr = addr + utils.signExtend(this.cpu.bus.cpuPeek(addr + 1)) + 2;
+				destAddr = addr + utils.signExtend(this.readbyte(addr + 1)) + 2;
 				return [split[0] + " $" + formatJumpAddr(destAddr) + suffix, addr + 2, destAddr];
 			case "zp": {
-				const zpAddr= this.cpu.bus.cpuPeek(addr + 1);
-				const zpValue= utils.hexbyte(this.cpu.bus.cpuPeek(zpAddr));
+				const zpAddr= this.readbyte(addr + 1);
+				const zpValue= utils.hexbyte(this.readbyte(zpAddr));
 				return [
-					`${split[0]} $${utils.hexbyte(this.cpu.bus.cpuPeek(addr + 1))}${suffix}; $${zpValue}`,
+					`${split[0]} $${utils.hexbyte(this.readbyte(addr + 1))}${suffix}; $${zpValue}`,
 					addr + 2
 				];
 			}
 			case "(,x)":
-				return [split[0] + " ($" + utils.hexbyte(this.cpu.bus.cpuPeek(addr + 1)) + ", X)" + suffix, addr + 2];
+				return [split[0] + " ($" + utils.hexbyte(this.readbyte(addr + 1)) + ", X)" + suffix, addr + 2];
 			case "()":
-				destAddr = this.cpu.bus.cpuPeek(addr + 1);
-				destAddr = this.cpu.bus.cpuPeek(destAddr) | (this.cpu.bus.cpuPeek(destAddr + 1) << 8);
-				return [split[0] + " ($" + utils.hexbyte(this.cpu.bus.cpuPeek(addr + 1)) + ")" + suffix + " ; $" + utils.hexword(destAddr) + suffix2, addr + 2];
+				destAddr = this.readbyte(addr + 1);
+				destAddr = this.readbyte(destAddr) | (this.readbyte(destAddr + 1) << 8);
+				return [split[0] + " ($" + utils.hexbyte(this.readbyte(addr + 1)) + ")" + suffix + " ; $" + utils.hexword(destAddr) + suffix2, addr + 2];
 			case "(abs)":
-				destAddr = this.cpu.bus.cpuPeek(addr + 1) | (this.cpu.bus.cpuPeek(addr + 2) << 8);
-				indDest = this.cpu.bus.cpuPeek(destAddr) | (this.cpu.bus.cpuPeek(destAddr + 1) << 8);
+				destAddr = this.readbyte(addr + 1) | (this.readbyte(addr + 2) << 8);
+				indDest = this.readbyte(destAddr) | (this.readbyte(destAddr + 1) << 8);
 				return [split[0] + " ($" + formatJumpAddr(destAddr) + ")" + suffix + " ; $" + utils.hexword(indDest) + suffix2, addr + 3, indDest];
 			case "(abs,x)":
-				destAddr = this.cpu.bus.cpuPeek(addr + 1) | (this.cpu.bus.cpuPeek(addr + 2) << 8);
-				indDest = this.cpu.bus.cpuPeek(destAddr) | (this.cpu.bus.cpuPeek(destAddr + 1) << 8);
+				destAddr = this.readbyte(addr + 1) | (this.readbyte(addr + 2) << 8);
+				indDest = this.readbyte(destAddr) | (this.readbyte(destAddr + 1) << 8);
 				return [split[0] + " ($" + formatJumpAddr(destAddr) + ",x)" + suffix, addr + 3, indDest];
 		}
 		return [opcode, addr + 1];
