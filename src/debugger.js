@@ -1,5 +1,5 @@
 import * as utils from "./utils.js";
-import Disassembler from "./cpu/disassembler.js";
+import Disassembler from "./cpu/disassembler/disassembler.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
 // up to the target by counting all "common" instructions as a point. The highest-scoring run of
@@ -42,9 +42,9 @@ export default class Debugger {
 			.querySelector("#registers")
 			.addEventListener("click", (e)=> this.onClickRegister(e));
 
-		this.uiroot
-			.querySelector("#mem")
-			.addEventListener("wheel", (e) => this.onPageMem(e), {passive: true});
+		const mem= this.uiroot.querySelector("#mem");
+		mem.addEventListener("wheel", (e) => this.onPageMem(e), {passive: true})
+		mem.addEventListener("click", (e)=> this.onClickMem(e));
 
 		this.uiroot
 			.querySelectorAll(".btn")
@@ -120,18 +120,25 @@ export default class Debugger {
 		this.updateMem();
 	}
 
+	onClickMem(e) {
+		let value= parseInt(prompt("ADDRESS ? (as hexa value)"), 16);
+		if(isNaN(value))
+			return;
+		this.dumpAddr= value;
+		this.updateMem();
+	}
+
 	onClickRegister(e) {
 
 		if(e.target.className == "register") {
 			let value= prompt("Hexa value for register "+e.target.id);
 			this.vm.updateCPUregister(e.target.id, parseInt(value, 16));
-			// this.cpu[e.target.id]= parseInt(value, 16);
 		}
 		else {
 			const target= e.target.parentElement;
 			if(target.className != "status")
 				return;
-			this.cpu.p[target.id]= !this.cpu.p[target.id];
+			this.vm.updateCPUregister(target.id, 1-target.querySelector(".flag").innerText);
 		}
 		this.update();
 	}
@@ -159,7 +166,7 @@ export default class Debugger {
 			let score= 0;
 			let addr= startingPoint & 0xffff;
 			while (addr < address) {
-				let result= this.disassembler.disassemble(addr);
+				let result= this.disassembler.disassemble(addr, cpuState);
 				if (result[0] === cpuState.PC) score += 10; // huge boost if this instruction was executed
 				if (result[0].match(commonInstructions) && !result[0].match(uncommonInstrucions)) {
 					score++;
@@ -178,26 +185,32 @@ export default class Debugger {
 	}
 
 	updateDisasm(cpuState) {
-		const buildLine= (addr, asm, selected= false) => {
+		const buildLine= (addr, asm, comment, selected= false) => {
 			return `
-				<div class="${selected?"selected":""}">
-				${addr.toString(16).padStart(4, "0")}: ${asm.toLowerCase()}
-				</div>
-				`;
+				<div class="line ${selected?"selected":""}">
+					<div class="instruction">
+						${addr.toString(16).padStart(4, "0")}: ${asm}
+					</div>` +
+					(comment ?
+						`<div class="comment">${comment}</div>`
+						:
+						""
+					) +
+				"</div>";
 		};
 
 		let disasmStr= "";
 		let addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			const rez= this.disassembler.disassemble(addr, true);
-			disasmStr+= buildLine(addr, rez[0], addr==cpuState.PC);
+			const rez= this.disassembler.disassemble(addr, cpuState);
+			disasmStr+= buildLine(addr, rez[0], rez[2], addr==cpuState.PC);
 			addr= rez[1];
 		}
 		addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
 			addr= this.prevInstruction(cpuState, addr);
-			const rez= this.disassembler.disassemble(addr, true);
-			disasmStr= buildLine(addr, rez[0]) + disasmStr;
+			const rez= this.disassembler.disassemble(addr, cpuState);
+			disasmStr= buildLine(addr, rez[0], rez[2]) + disasmStr;
 		}
 
 		document.querySelector("#debugger #disasm").innerHTML= disasmStr;

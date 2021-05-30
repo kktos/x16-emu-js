@@ -40,7 +40,6 @@ export default class Video {
 					ascii+= 0xE100;
 				else
 				if(ascii<=0x7F)
-					// ascii+= -0x40 + ( ((tick/10)|0)%2 ? 0xE100 : 0 );
 					ascii+= 0xE100;
 				else
 				if(ascii>=0xA0)

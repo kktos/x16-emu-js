@@ -1,5 +1,5 @@
-import * as utils from "../utils.js";
-import opcodes from "./opcodes6502.js";
+import * as utils from "../../utils.js";
+import instructions from "./instructions";
 
 function formatAddr(addr) {
 	return "<span class='instr_mem_ref'>" + utils.hexword(addr) + "</span>";
@@ -7,6 +7,16 @@ function formatAddr(addr) {
 
 function formatJumpAddr(addr) {
 	return "<span class='instr_instr_ref'>" + utils.hexword(addr) + "</span>";
+}
+
+function disByte(byteData)
+{
+	return "$"+byteData.toString(16).padStart(2,"0");
+}
+
+function disWord(byteDataLow, byteDataHigh)
+{
+	return "$"+(byteDataLow+(byteDataHigh<<8)).toString(16).padStart(4,"0");
 }
 
 export default class Disassembler {
@@ -19,7 +29,80 @@ export default class Disassembler {
 		return this.memory[addr&0xFFFF];
 	}
 
-	disassemble(addr) {
+	disassemble(addr, cpuState)
+	{
+		let len= 1;
+		let temp_str= instructions[this.readbyte(addr)];
+		let ret_str= "";
+		const [op, addrMode] = temp_str.split(" ");
+		let comment= null;
+		for(let i= 0; i<temp_str.length; i++) {
+			switch(temp_str[i]) {
+				case "$": {
+					const byt= this.readbyte(addr+len);
+					ret_str+= disByte(byt);
+
+					switch(addrMode) {
+						case "($),Y": {
+							const destAddr= this.readbyte(byt) + this.readbyte(byt+1)<<8;
+							comment= `$${utils.hexword(destAddr)}+$${utils.hexbyte(cpuState.Y)}= $${utils.hexword(destAddr+cpuState.Y)}`;
+							break;
+						}
+						case "$": {
+							const value= this.readbyte(byt);
+							comment= `$${utils.hexbyte(value)}`;
+							break;
+						}
+					}
+
+					len++;
+					break;
+				}
+
+				case "r":
+					ret_str+= "$"+utils.hexword(addr + utils.signExtend(this.readbyte(addr + len)) + 2);
+					len++;
+					if(cpuState.PC != addr)
+						break;
+					let willBranch= false;
+					switch(op) {
+						case "BPL":
+							willBranch= !cpuState.FlagN;
+							break;
+						case "BMI":
+							willBranch= cpuState.FlagN;
+							break;
+						case "BCC":
+							willBranch= !cpuState.FlagC;
+							break;
+						case "BCS":
+							willBranch= cpuState.FlagC;
+							break;
+						case "BEQ":
+							willBranch= cpuState.FlagZ;
+							break;
+						case "BNE":
+							willBranch= !cpuState.FlagZ;
+							break;
+					}
+					if(willBranch)
+						comment= "will branch";
+					break;
+
+				case "%":
+					ret_str+= disWord(this.readbyte(addr+len), this.readbyte(addr+len+1));
+					len+= 2;
+					break;
+
+				default:
+					ret_str+= temp_str[i];
+					break;
+			}
+		}
+		return [ret_str, addr + len, comment];
+	}
+
+	_disassemble(addr) {
 		let opcode = opcodes[this.readbyte(addr)];
 		if (!opcode) {
 			return ["???", addr + 1];

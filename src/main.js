@@ -1,17 +1,12 @@
 import VM from "./vm.js";
 
-// import {MONITOR} from "./apple2-monitor.js";
-// import machine from "./machines/apple2e-enhanced/machine.js";
-import machine from "./machines/apple2-plus/machine.js";
+import machine from "./machines/apple2e-enhanced/machine.js";
+// import machine from "./machines/apple2-plus/machine.js";
 
 const canvas= document.getElementById("screen");
 
 const vm= new VM(canvas, machine);
 
-// write the reset vector
-// vm.bus.write(0xFFFC, "00 08");
-
-// vm.memWrite(ADDR, ROM);
 
 /**
 CH          =     $24
@@ -79,7 +74,6 @@ text = *
 // addr= vm.bus.writeString(addr, "en vertical");
 // addr= vm.bus.write(addr, "00");
 
-// vm.memWrite(0xe000, "4c 69 ff");
 vm.memWrite(0x0400, "AA AA AA");
-// vm.cpu.reset(true);
+
 vm.start();

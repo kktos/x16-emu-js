@@ -2,6 +2,7 @@
 	<head>
 		<style>
 			@font-face { font-family: PrintChar21; src: url("/assets/fonts/PrintChar21.ttf"); }
+			@font-face { font-family: PRNumber3; src: url("/assets/fonts/PRNumber3.ttf"); }
 			BODY {
 				font-family: PrintChar21;
 				position: absolute;
@@ -32,6 +33,13 @@
 			    grid-gap: 3px;
 				grid-template-columns: 350px;
     			grid-auto-rows: min-content;
+			}
+			#disasm .line {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+			}
+			#disasm .comment:before {
+				content: ";";
 			}
 			#btns {
 				grid-area: btns;
@@ -109,7 +117,6 @@
 				<div>Y</div><div class="register" id="Y"></div>
 				<div>PC</div><div class="register" id="PC"></div>
 				<div>S</div><div class="register" id="SP"></div>
-				<div>P</div><div class="register" id="P"></div>
 				<div class="p register">
 					<div id="n" class="status"><div>N</div><div class="flag"></div></div>
 					<div id="v" class="status"><div>V</div><div class="flag"></div></div>

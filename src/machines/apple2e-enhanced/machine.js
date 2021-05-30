@@ -5,13 +5,18 @@ const machine= {
 
 	name: "Apple //e",
 
-	memory: [
-		{
-			addr: 0xC000,
-			data: ROM
-		}
-	],
+	memory: {
+		size: 64 * 1024 * 2,
+		bank: 2,
+		map: [
+			{
+				addr: 0xC000,
+				data: ROM
+			}
+		],
+	},
 
+	busSrcFile: "apple2/bus.js",
 	Video
 };
 

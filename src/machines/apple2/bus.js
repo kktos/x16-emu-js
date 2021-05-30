@@ -1,4 +1,9 @@
 import KeyMap from "../../keymap.js";
+
+/*
+http://www.lazilong.com/apple_II/bbros/ascii.jpg
+ */
+
 export default class Bus {
 	constructor(gc, buffer) {
 		this.gc= gc;
@@ -22,14 +27,30 @@ export default class Bus {
 
 			console.log(keyPressed);
 
-			this.keyWasRead= true;
 			this.keys.get(keyPressed[0]);
 			switch(keyPressed[0]) {
+				case "Alt":
+				case "AltGraph":
+				case "CapsLock":
+				case "Meta":
+				case "Shift":
+				case "Control":
+					return this.lastKeypressed;
+
+				case "ArrowDown":
+					this.lastKeypressed= 0x8A;
+					break;
+				case "ArrowUp":
+					this.lastKeypressed= 0x8B;
+					break;
 				case "ArrowLeft":
 					this.lastKeypressed= 0x88;
 					break;
 				case "ArrowRight":
 					this.lastKeypressed= 0x95;
+					break;
+				case "Tab":
+					this.lastKeypressed= 0x88;
 					break;
 				case "Escape":
 					this.lastKeypressed= 0x9B;
@@ -45,10 +66,12 @@ export default class Bus {
 					break;
 			}
 
+			this.keyWasRead= true;
 			return this.lastKeypressed | 0x80;
 		}
 		if(addr==0xC010) {
 			this.keyWasRead= false;
+			return 0;
 		}
 
 		return this.ram[addr];

@@ -29,30 +29,20 @@ export default class VM {
 			keys: new KeyMap(),
 		};
 
-		this.memory= new SharedArrayBuffer(64 * 1024);
-		this.worker= new Worker(new URL('./cpu/65c02/emu6502.js', import.meta.url));
+		this.worker= new Worker(new URL('./cpu/controller.js', import.meta.url));
 		this.worker.addEventListener('message', (e) => this.handleMessage(e.data), false);
 
+		this.memory= new SharedArrayBuffer(machine.memory.size);
 		this.sendMessage("setup", {
 			buffer: this.memory,
+			busSrcFile: machine.busSrcFile,
 			gc: {},
 			NMOS_mode: true
 		});
 
 		this.setSpeed(1);
 
-
-
-		// const model= {
-		// 	nmos: true
-		// };
-		// this.bus= new Bus(this.gc);
-		// this.cpu= new Cpu6502(model, this.bus);
-		// this.cpu.reset(true);
-
 		this.debugger= new Debugger(this, this.memory);
-
-		// this.cpu._debugInstruction= this.debugger.onInstruction.bind(this.debugger);
 
 		this.video= new machine.Video(this.memory);
 		this.canvas.width= this.video.width;
@@ -62,7 +52,7 @@ export default class VM {
 	}
 
 	setupMemoryMap(machine) {
-		machine.memory.forEach(({addr, data}) => {
+		machine.memory.map.forEach(({addr, data}) => {
 			this.memWrite(addr, data);
 		});
 	}
