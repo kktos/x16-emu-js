@@ -13,7 +13,9 @@ export let core= {
 	FlagV: 0,
 	FlagN: 0,
 	cycle_count: 0,
-	calcAddress: -1
+	calcAddress: -1,
+	running: 0,
+	debuggerOnBRK: true
 };
 
 let cycle_penalty= 0;
@@ -341,12 +343,37 @@ function opBRK()													//0x00
 {
 	//core.FlagB=0;
 	//core.PC--;
-	core.PC++;
-	if(core.running) {
-		core.running= 0;
-		self.postMessage({cmd:"stopped", op:"BRK", PC: core.PC});
-	}
+
 	core.cycle_count+=7;
+
+	if(core.debuggerOnBRK && core.running) {
+		core.running= 0;
+		core.PC-= 1;
+		self.postMessage({cmd:"stopped", op:"BRK", PC: core.PC});
+		return;
+	}
+
+	core.PC++;
+
+	core.bus.write(core.SP + 0x100, core.PC >> 8);
+	core.SP = (core.SP - 1) & 0xFF;
+	core.bus.write(core.SP + 0x100, core.PC & 0xFF);
+	core.SP = (core.SP - 1) & 0xFF;
+	let v = core.FlagN << 7;
+	v |= core.FlagV << 6;
+	v |= 3 << 4;
+	v |= core.FlagD << 3;
+	v |= core.FlagI << 2;
+	v |= core.FlagZ << 1;
+	v |= core.FlagC;
+	core.bus.write(core.SP + 0x100, v);
+	core.SP = (core.SP - 1) & 0xFF;
+	core.FlagI = 1;
+	core.FlagD = 0;
+	core.PC = (core.bus.read(0xFFFF) << 8) | core.bus.read(0xFFFE);
+	// this.cycles += 5;
+
+
 }
 function opORA_IX(){subORA(memIX());core.cycle_count+=6;}				//0x01
 function opNOP_IMMED(){core.PC++;core.cycle_count+=2;}						//0x02

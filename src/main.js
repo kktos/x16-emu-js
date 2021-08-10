@@ -1,7 +1,8 @@
 import VM from "./vm.js";
 
-import machine from "./machines/apple2e-enhanced/machine.js";
+// import machine from "./machines/klaus-test-suite/machine.js";
 // import machine from "./machines/apple2-plus/machine.js";
+import machine from "./machines/apple2e-enhanced/machine.js";
 
 const canvas= document.getElementById("screen");
 
@@ -74,6 +75,8 @@ text = *
 // addr= vm.bus.writeString(addr, "en vertical");
 // addr= vm.bus.write(addr, "00");
 
-vm.memWrite(0x0400, "AA AA AA");
+// vm.memWrite(0, 0x0400, "AA AA AA");
+
+// vm.memWrite(0, 0x0300, "20 58 fc a9 aa 8d 80 7 8d 55 c0 8d 80 07 8d 54 c0 60");
 
 vm.start();

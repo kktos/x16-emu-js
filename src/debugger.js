@@ -22,7 +22,8 @@ export default class Debugger {
 
 		this.stepCount= Infinity;
 		this.stopOnOpcode= 0;
-		this.dumpAddr= 0;
+		this.dumpMemAddr= 0;
+		this.dumpMemBank= 0;
 
 		this.setupUI();
 	}
@@ -73,7 +74,7 @@ export default class Debugger {
 		switch(e.target.id) {
 			case "play":
 				this.updateBtns(false);
-				this.vm.play();
+				setTimeout(() => this.vm.play(), 0);
 				break;
 
 			case "pause":
@@ -116,15 +117,32 @@ export default class Debugger {
 	}
 
 	onPageMem(e) {
-		this.dumpAddr+= 16 * (e.deltaY>0?1:-1);
+		this.dumpMemAddr+= 16 * (e.deltaY>0?1:-1);
+		this.dumpMemAddr&= 0xFFFF;
 		this.updateMem();
 	}
 
 	onClickMem(e) {
-		let value= parseInt(prompt("ADDRESS ? (as hexa value)"), 16);
-		if(isNaN(value))
-			return;
-		this.dumpAddr= value;
+		let value;
+		if(e.target.className == "value") {
+			const addrStr= e.target.parentElement.id;
+			const parts= addrStr.split(":");
+			const bank= parseInt("0x"+parts[0]);
+			const addr= parseInt("0x"+parts[1]) + Number(e.target.id);
+
+			value= parseInt(prompt(utils.hexbyte(bank)+":"+utils.hexword(addr) + ": VALUE ? (as hexa value)"), 16);
+			if(isNaN(value))
+				return;
+			this.memory[bank*0x10000 + addr]= value & 0xFF;
+
+			this.vm.updateVideo();
+		} else {
+			value= parseInt(prompt("ADDRESS ? (as hexa value)"), 16);
+			if(isNaN(value))
+				return;
+			this.dumpMemAddr= value & 0xFFFF;
+			this.dumpMemBank= value>>16;
+		}
 		this.updateMem();
 	}
 
@@ -219,14 +237,12 @@ export default class Debugger {
 	updateMem() {
 		let dumpStr= "";
 		for(let line= 0; line<DISASM_LINES_COUNT; line++) {
-			const addr= this.dumpAddr + line*16;
-			dumpStr+= `<div>${utils.hexword(addr)}:`;
-			for(let column= 0; column<16; column++) {
-				// const char= utils.hexbyte(this.bus.ram[addr+column]);
-				// const char= utils.hexbyte(this.memory[addr+column]);
-				const char= utils.hexbyte(this.disassembler.readbyte(addr+column));
-				dumpStr+= " "+char;
-			}
+			const addr= this.dumpMemAddr + line*16;
+			dumpStr+= `<div class="addr" id="${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}">${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}:`;
+			for(let column= 0; column<16; column++)
+				dumpStr+= 	` <span class="value" id="${column}">` +
+								utils.hexbyte(this.memory[(this.dumpMemBank*0x10000)+addr+column]) +
+							"</span>";
 			dumpStr+= "</div>";
 		}
 		document.querySelector("#debugger #mem").innerHTML= dumpStr;
@@ -241,7 +257,6 @@ export default class Debugger {
 			dumpStr+= `<div class="${addr == currentSP?"selected":""}">
 							${utils.hexword(addr)}: ${utils.hexbyte(this.memory[addr])}
 						</div>`;
-			// ${utils.hexword(addr)}: ${utils.hexbyte(this.bus.ram[addr])}
 		}
 		document.querySelector("#debugger #stack").innerHTML= dumpStr;
 	}
@@ -260,7 +275,7 @@ export default class Debugger {
 	}
 
 	async update() {
-		const {data: cpuState}= await this.vm.getCPUstate();
+		const cpuState= await this.vm.getCPUstate();
 		console.log({cpuState});
 
 		this.updateStack(cpuState);

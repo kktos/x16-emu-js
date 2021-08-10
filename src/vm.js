@@ -1,13 +1,11 @@
 import ENV from "./env.js";
 import KeyMap from "./keymap.js";
-// import Cpu6502 from "./cpu/cpu6502.js"
-// import Bus from "./cpu/bus.js";
 import Debugger from "./debugger.js";
 
-let lastTime= 0;
-let acc= 0;
-let inc= ENV.FPS;
-let msgcounter= 0;
+let lastTime,
+	acc,
+	inc= ENV.FPS,
+	msgcounter= 0;
 
 const OneMHz= 1_000_000 * ENV.FPS | 0;
 export default class VM {
@@ -36,7 +34,7 @@ export default class VM {
 		this.sendMessage("setup", {
 			buffer: this.memory,
 			busSrcFile: machine.busSrcFile,
-			gc: {},
+			debuggerOnBRK: machine.debuggerOnBRK===false ? false : true,
 			NMOS_mode: true
 		});
 
@@ -44,7 +42,7 @@ export default class VM {
 
 		this.debugger= new Debugger(this, this.memory);
 
-		this.video= new machine.Video(this.memory);
+		this.video= new machine.Video(this.memory, this);
 		this.canvas.width= this.video.width;
 		this.canvas.height= this.video.height;
 
@@ -52,13 +50,14 @@ export default class VM {
 	}
 
 	setupMemoryMap(machine) {
-		machine.memory.map.forEach(({addr, data}) => {
-			this.memWrite(addr, data);
+		machine.memory.map.forEach(({bank, addr, data}) => {
+			this.memWrite(bank, addr, data);
 		});
 	}
 
-	memWrite(addr, value) {
+	memWrite(bank, addr, value) {
 		this.sendMessage("memWrite", {
+			bank,
 			addr,
 			value
 		});
@@ -91,6 +90,9 @@ export default class VM {
 		console.log("handleMessage", msg);
 
 		switch(msg.cmd) {
+			case "video":
+				this.video.handleMessage(msg.data);
+				break;
 			case "stopped":
 				this.debugger.pause();
 				break;
@@ -115,11 +117,15 @@ export default class VM {
 	}
 
 	getCPUstate() {
-		return this.waitMessage("update");
+		return this.waitMessage("update").then(msg=> msg.data);
 	}
 
 	updateCPUregister(register, value) {
 		this.sendMessage("register", {register, value});
+	}
+
+	updateVideo() {
+		this.video.update(this.gc, this.cyclesPerFrame);
 	}
 
 	pause() {
@@ -129,20 +135,22 @@ export default class VM {
 
 	play() {
 		this.isRunning= true;
-		this.loop();
+		lastTime= 0;
+		acc= 0;
+		requestAnimationFrame((dt)=> this.loop(dt));
 		this.sendMessage("run");
 	}
 
 	step() {
-		this.sendMessage("step");
+		this.waitMessage("step").then(() => this.video.update(this.gc, this.cyclesPerFrame));
 	}
 
 	stepOut() {
-		this.sendMessage("stepOut");
+		this.sendMessage("stepOut").then(() => this.video.update(this.gc, this.cyclesPerFrame));
 	}
 
 	stepOver() {
-		this.sendMessage("stepOver");
+		this.sendMessage("stepOver").then(() => this.video.update(this.gc, this.cyclesPerFrame));
 	}
 
 	handleEvent(e) {

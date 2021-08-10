@@ -113,7 +113,7 @@ const instructions= [
 	"ADC %",		//opADC_ADDRESS,	//0x6D
 	"ROR %",		//opROR_ADDRESS,	//0x6E
 	"BBR6 $,$",		//opBBR6,			//0x6F
-	"BVS $",		//opBVS,			//0x70
+	"BVS r",		//opBVS,			//0x70
 	"ADC ($),Y",	//opADC_IY,			//0x71
 	"ADC ($)",		//opADC_IZP,		//0x72
 	"NOP",			//opNOP,			//0x73
@@ -145,7 +145,7 @@ const instructions= [
 	"STA %",		//opSTA_ADDRESS,	//0x8D
 	"STX %",		//opSTX_ADDRESS,	//0x8E
 	"BBS0 $,$",		//opBBS0,			//0x8F
-	"BCC $",		//opBCC,			//0x90
+	"BCC r",		//opBCC,			//0x90
 	"STA ($),Y",	//opSTA_IY,			//0x91
 	"STA ($)",		//opSTA_IZP,		//0x92
 	"NOP",			//opNOP,			//0x93

@@ -23,17 +23,20 @@ import { core, opcodes } from "./core65c02";
 //*GLOBAL VARIABLES*
 //******************
 
-let loaded=0;
+let loaded= 0;
 let NMOS_mode;
 let debugflag;
-let debugBuffer=[];
-let cycleLog="";
-let cycleLogActivated=false;
+let debugBuffer= [];
+let cycleLog= "";
+let cycleLogActivated= false;
 
 let keyBuffer= [];
 
 const breakpoints= [
-//	0xFDED
+	// 0xC803
+	// 0xCC90
+	// 0xCCBD
+	0xC814
 ];
 let tempBP= 0;
 let jsrLevel= 0;
@@ -158,7 +161,7 @@ function OnMessage({data:{cmd, id, data}})
 		// 	break;
 
 		case "memWrite":
-			core.bus.writeHexa(data.addr, data.value);
+			core.bus.writeHexa(data.bank, data.addr, data.value);
 			break;
 
 		case "dumpRam":
@@ -171,6 +174,7 @@ function OnMessage({data:{cmd, id, data}})
 
 		case 'step':
 			step();
+			self.postMessage({cmd: "step", id: id });
 			break;
 
 		case 'stepOver':
@@ -179,26 +183,26 @@ function OnMessage({data:{cmd, id, data}})
 				run();
 			} else
 				step();
+			self.postMessage({cmd: "stepOver", id: id });
 			break;
 
 		case 'stepOut': {
 			wannaStopOnRTS= true;
 			stopAtjsrLevel= jsrLevel;
-
-			console.log('stepOut', core.PC.toString(16), jsrLevel);
-
+			// console.log('stepOut', core.PC.toString(16), jsrLevel);
 			run();
+			self.postMessage({cmd: "stepOut", id: id });
 			break;
 		}
 
 		case 'register': {
 			const {register, value}= data;
 			switch(register) {
-				case "core.PC":	core.PC= value; break;
-				case "core.A":	core.A= value; break;
-				case "core.X":	core.X= value; break;
-				case "core.Y":	core.Y= value; break;
-				case "core.SP":	core.SP= value & 0xFF; break;
+				case "PC":	core.PC= value; break;
+				case "A":	core.A= value; break;
+				case "X":	core.X= value; break;
+				case "Y":	core.Y= value; break;
+				case "SP":	core.SP= value & 0xFF; break;
 				case "c":	core.FlagC= value; break;
 				case "z":	core.FlagZ= value; break;
 				case "i":	core.FlagI= value; break;
@@ -310,7 +314,7 @@ function dumpMem(addr) {
 //*SETUP FUNCTION*
 //****************
 
-async function setup({gc, busSrcFile, buffer, NMOS})
+async function setup({busSrcFile, buffer, NMOS, debuggerOnBRK})
 {
 	//Moved above since needed before receive message for setup
 	//self.addEventListener('message', OnMessage , false);
@@ -319,8 +323,10 @@ async function setup({gc, busSrcFile, buffer, NMOS})
 	//for (i=0;i<0x40000;i++) core.bus.read(i)=0;
 
 	const Bus= await import("/src/machines/" + busSrcFile).then(m=>m.default);
-	core.bus= new Bus(gc, buffer);
+	core.bus= new Bus(self, buffer);
 	NMOS_mode= NMOS;
+
+	core.debuggerOnBRK= debuggerOnBRK;
 
 /*
 	let record_bytes=0;

@@ -2,11 +2,11 @@ import * as utils from "../../utils.js";
 import instructions from "./instructions";
 
 function formatAddr(addr) {
-	return "<span class='instr_mem_ref'>" + utils.hexword(addr) + "</span>";
+	return "<span class='instr_mem_ref'>$" + utils.hexword(addr) + "</span>";
 }
 
 function formatJumpAddr(addr) {
-	return "<span class='instr_instr_ref'>" + utils.hexword(addr) + "</span>";
+	return "<span class='instr_instr_ref'>$" + utils.hexword(addr) + "</span>";
 }
 
 function disByte(byteData)
@@ -29,6 +29,10 @@ export default class Disassembler {
 		return this.memory[addr&0xFFFF];
 	}
 
+	readword(addr) {
+		return (this.memory[(addr+1)&0xFFFF]<<8) | this.memory[addr&0xFFFF];
+	}
+
 	disassemble(addr, cpuState)
 	{
 		let len= 1;
@@ -44,7 +48,7 @@ export default class Disassembler {
 
 					switch(addrMode) {
 						case "($),Y": {
-							const destAddr= this.readbyte(byt) + this.readbyte(byt+1)<<8;
+							const destAddr= this.readword(byt);
 							comment= `$${utils.hexword(destAddr)}+$${utils.hexbyte(cpuState.Y)}= $${utils.hexword(destAddr+cpuState.Y)}`;
 							break;
 						}
@@ -67,32 +71,44 @@ export default class Disassembler {
 					let willBranch= false;
 					switch(op) {
 						case "BPL":
-							willBranch= !cpuState.FlagN;
+							willBranch= 0== cpuState.FlagN;
 							break;
 						case "BMI":
-							willBranch= cpuState.FlagN;
+							willBranch= 1 == cpuState.FlagN;
 							break;
 						case "BCC":
-							willBranch= !cpuState.FlagC;
+							willBranch= 0 == cpuState.FlagC;
 							break;
 						case "BCS":
-							willBranch= cpuState.FlagC;
+							willBranch= 1 == cpuState.FlagC;
 							break;
 						case "BEQ":
-							willBranch= cpuState.FlagZ;
+							willBranch= 1 == cpuState.FlagZ;
 							break;
 						case "BNE":
-							willBranch= !cpuState.FlagZ;
+							willBranch= 0 == cpuState.FlagZ;
 							break;
 					}
 					if(willBranch)
 						comment= "will branch";
 					break;
 
-				case "%":
-					ret_str+= disWord(this.readbyte(addr+len), this.readbyte(addr+len+1));
+				case "%": {
+					const destAddr = this.readbyte(addr + len) | (this.readbyte(addr + len + 1) << 8);
+					const isFnCall = ["JMP", "JSR"].includes(op);
+					if(!isFnCall)
+						switch(addrMode) {
+							case "%": {
+								comment= `$${utils.hexbyte(this.readbyte(destAddr))}`;
+								break;
+							}
+						}
+
+					ret_str+= isFnCall ? formatJumpAddr(destAddr) : formatAddr(destAddr);
 					len+= 2;
+
 					break;
+				}
 
 				default:
 					ret_str+= temp_str[i];
