@@ -1,0 +1,125 @@
+
+
+; 100 REM GUESSING GAME
+; 110 REM VERSION 1.0
+; 120 PRINT "GUESS THE NUMBER BETWEEN 1 AND 100."
+; 140 LET X = INT(100*RND(0)+1)
+; 150 LET N = 0
+; 160 PRINT "YOUR GUESS";
+; 170 INPUT G
+; 180 LET N = N+1
+; 190 IF G = X THEN 300
+; 200 IF G < X THEN 250
+; 210 PRINT "TOO LARGE, GUESS AGAIN"
+; 220 GOTO 160
+; 230
+; 250 PRINT "TOO SMALL, GUESS AGAIN"
+; 260 GOTO 160
+
+;140 LET X = INT(100*RND(0)+1)
+; int(
+; 	100
+; 	*
+; 	rnd(
+;		0
+; 	)
+;	+
+;	1
+; )
+; 0 rnd 100 * 1 + int
+;
+; 00: 02 00 00
+; 03: xx
+; 04: 02 64 00
+; 07: xx
+; 08: 02 01 00
+; 0B: xx
+; 0C: xx
+
+;
+; HEADER
+;
+
+00: 00 01		; version
+02: 00 00		; vars
+04: 00 00		; strings
+06: 00 00		; indexes
+08: 1E 00		; start line[idx]
+
+;
+; PROGRAM
+;
+
+; +$0000 - 100 - DELETED
+000A: 01		; REM
+000B: 00 00		; str[0]
+
+; +$0003 - 120
+000F: 02		; PRINT
+0010: 01		; type=string
+0011: 01 00		; str[1]
+0013: 00		; end_of_print
+
+; +$0008 - 160
+000F: 02		; PRINT
+0010: 01		; type=string
+0011: 02 00		; str[2]
+0013: 00		; end_of_print
+
+; +$000D - 260
+000F: 05		; GOTO
+0011: 02 00		; lines[2]
+
+; +$0010 - 110
+000F: 01		; REM
+0011: 03 00		; str[3]
+
+; +$0013 - 100
+000F: 01		; REM
+0011: 03 00		; str[3]
+
+;
+; lines
+;
+0000: FF FF 00 00 18 00; DEL ptr:$0000 next_idx:$0010
+0006: 78 00 03 00 0C 00; 120 ptr:$0003 next_idx:$0008
+000C: A0 00 08 00 12 00; 160 ptr:$0008 next_idx:$000C
+0012: 04 01 0D 00 00 00; 260 ptr:$000D next_idx:$0000
+0018: 6E 00 10 00 06 00; 110 ptr:$0010 next_idx:$0004
+001E: 64 00 13 00 18 00; 100 ptr:$0013 next_idx:$0018
+
+;
+; vars
+;
+0000:
+
+;
+; strings
+;
+0000: "GUESSING GAME"
+000F: "GUESS THE NUMBER BETWEEN 1 AND 100."
+0034: "YOUR GUESS"
+0040: "VERSION 1.0"
+
+;
+; indexes
+;
+0000: 00 00		; str[0]
+0002: 0F 00		; str[1]
+0004: 34 00		; str[2]
+
+;
+VAR/TYPES
+01: string
+02: int
+03: float
+04: var
+
+;
+TOKENS
+01: REM
+02: PRINT
+03: LET
+04: IF
+05: GOTO
+06: GOSUB

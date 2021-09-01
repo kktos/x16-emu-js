@@ -1,0 +1,9 @@
+al 001062 .__BSS_LOAD__
+al 001062 .__BSS_RUN__
+al 000000 .__BSS_SIZE__
+al 001058 .skip
+al 00103B .loop16
+al 001033 .mult16
+al 001032 .done
+al 00105C .str
+al 00100E .loop
