@@ -4,39 +4,43 @@ import {
 	headers,
 	prgLines,
 	strings,
-	vars,
 	prgCode,
 	ERRORS,
 	CMDS,
 	SIZE,
 	TYPES,
 	lexer,
+	HEADER,
 } from "./defs.mjs";
 import { parseExpr, nextToken } from "./expr.mjs";
-import { writeBufferProgram, writeBufferHeader, writeBufferLine } from "./buffer.mjs";
-import { addVar, findVar, addIteratorVar, setIteratorVar, findIteratorVar, ITERATOR } from "./var.mjs";
+import { writeBufferProgram, writeBufferHeader, writeBufferLine, readBufferHeader } from "./buffer.mjs";
+import { addVar, findVar, addIteratorVar, findIteratorVar, dumpVars } from "./vars.mjs";
 import { addString } from "./string.mjs";
+import { addArray, dumpArrays } from "./arrays.mjs";
 
 let currentLineNum;
 
 export function parseSource(src) {
 	const lines= src.split("\n");
 
-	// version
-	writeBufferHeader(0, 0x0001);
-	// start lexer.buffer idx
-	writeBufferHeader(8, 0xFFFF);
+	for(let idx=0; idx<headers.length; idx++)
+		headers[idx]= 0xFF;
 
-	lines.forEach(v => {
+	// version
+	writeBufferHeader(HEADER.VERSION, 0x0001);
+	// start lexer.buffer idx
+	// writeBufferHeader(HEADER.START, 0xFFFF);
+
+	for(let idx=0; idx<lines.length; idx++) {
 		lexer.idx= 0;
-		lexer.buffer= v;
+		lexer.buffer= lines[idx];
 		const err= parseLine();
 		if(err) {
 			console.error("ERR", hexWord(err), ` at ${currentLineNum} : <${lexer.buffer.slice(lexer.idx)}>`);
-			dump();
+			dump(lines);
 			return null;
 		}
-	});
+	}
 
 	// clear screen
 	// process.stdout.write('\0o33c');
@@ -48,17 +52,27 @@ export function parseSource(src) {
 		lines: prgLines,
 		code: prgCode,
 		strings: strings,
-		vars: vars,
 	}
 
 }
 
 function dump(lines) {
+
+	function dumpHeader(name, offset) {
+		console.log(hexWord(offset), ":", hexWord(readBufferHeader(offset)),";",name);
+	}
+
 	console.log(lines);
 	console.log("");
 	console.log("----------- HEADER");
 	console.log("");
-	console.log(hexdump(headers, 0, 10, 2));
+
+	dumpHeader("version", HEADER.VERSION);
+	dumpHeader("start", HEADER.START);
+	dumpHeader("vars", HEADER.VARS);
+	dumpHeader("strings", HEADER.STRINGS);
+	dumpHeader("lines", HEADER.LINES);
+	dumpHeader("arrays", HEADER.ARRAYS);
 
 	console.log("");
 	console.log("----------- STRINGS");
@@ -68,7 +82,9 @@ function dump(lines) {
 	console.log("");
 	console.log("----------- VARS");
 	console.log("");
-	console.log(vars);
+	dumpVars();
+	console.log("----");
+	dumpArrays();
 
 	console.log("");
 	console.log("----------- CODE");
@@ -112,8 +128,25 @@ function parseLine() {
 		case CMDS.LET: {
 			const varName= nextToken();
 
-			const varIdx= addVar(varName);
+			let varIdx= findVar(varName);
+			if(varIdx<0) {
+				varIdx= addVar(varName)
+			}
 			writeBufferProgram(SIZE.word, varIdx);
+
+			let isArray= false;
+			const tok= nextToken();
+			if(tok == "(") {
+				const err= parseExpr();
+				if(err)
+					return err;
+
+				writeBufferProgram(SIZE.byte, TYPES.END);
+
+				if(nextToken() != ")")
+					return ERRORS.SYNTAX_ERROR;
+				isArray= true;
+			}
 
 			if(nextToken() != "=")
 				return ERRORS.SYNTAX_ERROR;
@@ -125,12 +158,38 @@ function parseLine() {
 
 			break;
 		}
+
+		case CMDS.DIM: {
+			const varName= nextToken();
+
+			let varIdx= findVar(varName);
+			if(varIdx<0) {
+				varIdx= addVar(varName, true)
+			}
+			writeBufferProgram(SIZE.word, varIdx);
+
+			if(nextToken() != "(")
+				return ERRORS.SYNTAX_ERROR;
+
+			const dim= parseNum();
+			if(isNaN(dim))
+				return ERRORS.SYNTAX_ERROR;
+
+			if(nextToken() != ")")
+				return ERRORS.SYNTAX_ERROR;
+
+			addArray(varIdx, dim);
+
+			break;
+		}
+
 		case CMDS.REM: {
 			const str= parseString();
 			const idx= addString(str);
 			writeBufferProgram(SIZE.word, idx);
 			break;
 		}
+
 		case CMDS.GOTO:
 		case CMDS.GOSUB: {
 			parseGoto();
@@ -145,8 +204,6 @@ function parseLine() {
 			}
 			let iteratorIdx= addIteratorVar(varIdx);
 			writeBufferProgram(SIZE.word, iteratorIdx);
-
-			setIteratorVar(iteratorIdx, ITERATOR.VAR, varIdx);
 
 			if(nextToken() != "=")
 				return ERRORS.SYNTAX_ERROR;
@@ -180,6 +237,8 @@ function parseLine() {
 
 		case CMDS.NEXT: {
 			const varName= nextToken();
+			if(!varName)
+				return ERRORS.SYNTAX_ERROR;
 
 			let varIdx= findVar(varName);
 			if(varIdx<0)
@@ -206,15 +265,16 @@ function parseLine() {
 				switch(tok) {
 					case ",":
 						hasMore= true;
-						writeBufferProgram(SIZE.byte,0x09);
+						writeBufferProgram(SIZE.byte, 0x09);
 						break;
 					case ";":
 						hasMore= true;
-						writeBufferProgram(SIZE.byte,0x0A);
+						writeBufferProgram(SIZE.byte, 0x0A);
 						break;
+					default:
+						writeBufferProgram(SIZE.byte, TYPES.END);
 				}
 			} while(hasMore);
-			writeBufferProgram(SIZE.byte, TYPES.END);
 
 			break;
 		}
@@ -232,6 +292,25 @@ function parseLine() {
 			writeBufferProgram(SIZE.byte, CMDS.GOTO);
 			parseGoto();
 			break;
+		}
+
+		case CMDS.END: {
+			let cmd= parseCmd(true);
+			switch(cmd) {
+				case CMDS.FUNCTION: {
+					nextToken();
+					prgCode.idx--;
+					writeBufferProgram(SIZE.byte, CMDS.END_FUNCTION);
+					break;
+				}
+			}
+		}
+
+		case CMDS.RETURN: {
+			const err= parseExpr();
+			if(err)
+				return err;
+			writeBufferProgram(SIZE.byte, TYPES.END);
 		}
 
 		default: {
@@ -290,8 +369,8 @@ function addPrgLine(lineNum, offset) {
 	let nextLineIdx= 0xFFFF;
 
 	if(minIdx == -1) {
-		nextLineIdx= headers[8] | (headers[9]<<8);
-		writeBufferHeader(8, currLineIdx);
+		nextLineIdx= readBufferHeader(HEADER.START);
+		writeBufferHeader(HEADER.START, currLineIdx);
 		// console.log("addPrgLine start", hexWord(nextLineIdx));
 	} else {
 		nextLineIdx= prgLines.buffer[minIdx+4] | (prgLines.buffer[minIdx+5]<<8);

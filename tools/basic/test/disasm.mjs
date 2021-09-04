@@ -1,15 +1,16 @@
 import { hexWord, hexByte } from "./utils.mjs";
 import {
-	headers,
 	prgLines,
 	strings,
-	vars,
 	prgCode,
 	CMDS,
-	FNS
+	FNS,
+	HEADER
 } from "./defs.mjs";
 import { TYPES } from "./defs.mjs";
 import { OPERATORS } from "./defs.mjs";
+import { getVar, getVarName } from "./vars.mjs";
+import { readBufferHeader } from "./buffer.mjs";
 
 let prgCursor= 0;
 let lineCursor= 0;
@@ -40,7 +41,7 @@ function disasmVar() {
 		}
 		case TYPES.var: {
 			const strIdx= readProgramWord();
-			console.log(hexWord(addr),":", hexWord(strIdx), "  ;", vars[strIdx]);
+			console.log(hexWord(addr),":", hexWord(strIdx), "  ;", getVar(strIdx));
 			break;
 		}
 	}
@@ -51,9 +52,18 @@ function disasLine() {
 	const cmdIdx= Object.values(CMDS).findIndex(id=>id==cmd);
 	const cmdName= Object.keys(CMDS)[cmdIdx];
 
-	console.log(hexWord(addr),":", hexByte(cmd), "    ;", cmdName);
+	console.log(hexWord(addr),":", hexByte(cmd), "       ;", cmdName);
 
 	switch(cmd) {
+		case CMDS.END_FUNCTION: {
+			break;
+		}
+
+		case CMDS.RETURN: {
+			disasmExpr();
+			break;
+		}
+
 		case CMDS.GOTO: {
 			const lineIdx= readProgramWord();
 			const line= prgLines.buffer[lineIdx] | (prgLines.buffer[lineIdx+1]<<8);
@@ -68,37 +78,46 @@ function disasLine() {
 		case CMDS.FOR: {
 			// disasmVar();
 			let varIdx= readProgramWord();
-			console.log(hexWord(addr),":", hexWord(varIdx), "  ; iterator", vars[varIdx].name);
+			console.log(hexWord(addr),":", hexWord(varIdx), "  ; iterator", getVarName(varIdx));
 
 			// varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", vars[varIdx]);
+			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", getVar(varIdx));
 			disasmExpr();
 
 			// varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", vars[varIdx]);
+			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", getVar(varIdx));
 			disasmExpr();
 
 			// varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", vars[varIdx]);
+			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", getVar(varIdx));
 			disasmExpr();
 			break;
 		}
 		case CMDS.NEXT: {
 			let varIdx= readProgramWord();
-			console.log(hexWord(addr),":", hexWord(varIdx), "  ; iterator", vars[varIdx].name);
+			console.log(hexWord(addr),":", hexWord(varIdx), "  ; iterator", getVarName(varIdx));
 			break;
 		}
 		case CMDS.PRINT: {
-			disasmExpr();
-			const sep= readProgramByte(true);
-			if(sep == 0xA) {
-				dumpByte(readProgramByte(), "no CR");
+			let sep;
+			while(sep != TYPES.END) {
+				disasmExpr();
+				sep= readProgramByte();
+				switch(sep) {
+					case 0x09:
+						dumpByte(sep, "tab");
+						break;
+					case 0x0A:
+						dumpByte(sep, "no CR");
+						break;
+				}
+				//dumpByte(readProgramByte(), "END");
 			}
 			break;
 		}
 		case CMDS.LET: {
 			const varIdx= readProgramWord();
-			console.log(hexWord(addr),":", hexWord(varIdx), "  ;", vars[varIdx]);
+			console.log(hexWord(addr),":", hexWord(varIdx), "     ;", getVarName(varIdx)+" =");
 			disasmExpr();
 			break;
 		}
@@ -153,7 +172,7 @@ function disasmExpr() {
 				const str= readProgramWord();
 				addr= memaddr;
 				dumpByte(itemType, " string");
-				dumpWord(str, strings[str]);
+				dumpWord(str, '"' + strings[str]+ '"');
 				break;
 			}
 			case TYPES.int: {
@@ -163,9 +182,9 @@ function disasmExpr() {
 				break;
 			}
 			case TYPES.var: {
-				dumpByte(itemType, " var");
 				const v= readProgramByte();
-				dumpWord(v, vars[v].name);
+				addr= memaddr;
+				dumpByteWord(itemType, v, "var: "+getVarName(v));
 				break;
 			}
 			case TYPES.CLOSE: {
@@ -184,7 +203,7 @@ function disasmExpr() {
 
 export function disasmPrg() {
 
-	lineCursor= headers[8] | (headers[9]<<8);
+	lineCursor= readBufferHeader(HEADER.START);
 	while(lineCursor != 0xFFFF) {
 
 		const lineNum= readLineWord();

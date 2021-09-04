@@ -1,18 +1,35 @@
 import { hexWord } from "./utils.mjs";
 import { parseSource } from "./parser.mjs";
 import { run } from "./vm.mjs";
-import { ERRORS, vars } from "./defs.mjs";
+import { ERRORS, strings } from "./defs.mjs";
+import { dumpVars } from "./vars.mjs";
 
 const src= `
-100 let x%=0
-140 for x%=0 to 10
-150 print x%;
-160 next x%
+10 dim a$(2)
+20 for i%=0 to 2
+30 let a$(i%)= chr$(65+i)
+40 next i%
 `;
 /*
-140 for x%=0 to 10 step 1
-150 print x%;
-160 next x
+140 dim tab%(10)
+150 print tab%[5]
+
+30 rem
+40 print (), test()
+50 end
+100 function test
+200 return 3
+300 end function
+
+10 let N$= "john"
+20 let count%=3
+30 PRINT count%, "Your name is ";CHR$(34);N$;CHR$(34)
+40 let count%=count%-1
+50 if count% > 0 then 30
+
+140 for x%=0 to 9
+150 print chr$( 48 + x% )
+160 next x%
 
 140 for x%=0 to 10 step 1
 150 print x%;
@@ -52,6 +69,10 @@ const prg= parseSource(src);
 if(!prg)
 	process.exit();
 
+console.log("************************************");
+console.log("*             RUN                   *");
+console.log("************************************");
+
 const err= run(prg);
 if(err) {
 	const idx= Object.values(ERRORS).indexOf(err);
@@ -61,4 +82,8 @@ if(err) {
 console.log("");
 console.log("----------- VARS");
 console.log("");
-console.log(vars);
+dumpVars();
+console.log("");
+console.log("----------- STRINGS");
+console.log("");
+console.log(strings);

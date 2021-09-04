@@ -10,7 +10,7 @@ import {
 	lexer
 } from "./defs.mjs";
 import { writeBufferProgram } from "./buffer.mjs";
-import { addVar, findVar } from "./var.mjs";
+import { addVar, findVar } from "./vars.mjs";
 import { addString } from "./string.mjs";
 
 export function nextToken(lookahead= false) {
@@ -228,15 +228,38 @@ function parseProduct() {
 }
 
 function parseTerm() {
-	const tok= nextToken();
+	const tok= nextToken(true);
 	if(!tok)
 		return ERRORS.syntax;
+
+	if(tok == ")")
+		return;
+
+	nextToken();
+
+	if(numberChars.includes(tok[0])) {
+		const num= parseInt(tok);
+		writeBufferProgram(SIZE.byte, TYPES.int);
+		writeBufferProgram(SIZE.word, num);
+		return 0;
+	}
 
 	if(tok[0] == '"') {
 		writeBufferProgram(SIZE.byte, TYPES.string);
 		const idx= addString(tok.slice(1));
 		writeBufferProgram(SIZE.word, idx);
-		return;
+		return 0;
+	}
+
+	if(tok == '(') {
+		const err= parseExpr();
+		if(err)
+			return err;
+
+		if(nextToken() != ")")
+			return ERRORS.syntax;
+
+		return 0;
 	}
 
 	if(FNS.hasOwnProperty(tok.toUpperCase())) {
@@ -256,19 +279,29 @@ function parseTerm() {
 		return 0;
 	}
 
-	if(numberChars.includes(tok[0])) {
-		const num= parseInt(tok);
-		writeBufferProgram(SIZE.byte, TYPES.int);
-		writeBufferProgram(SIZE.word, num);
+	if(nextToken(true) == "(") {
+		nextToken();
+
+		const err= parseExpr();
+		if(err)
+			return err;
+
+		if(nextToken() != ")")
+			return ERRORS.syntax;
+
+		writeBufferProgram(SIZE.byte, TYPES.fn);
+		writeBufferProgram(SIZE.byte, FNS.USER_DEF);
 		return 0;
 	}
 
-	let varIdx= findVar(tok);
-	if(varIdx<0) {
-		varIdx= addVar(tok)
+	if(identiferChars.includes(tok[0])) {
+		let varIdx= findVar(tok);
+		if(varIdx<0) {
+			varIdx= addVar(tok)
+		}
+		writeBufferProgram(SIZE.byte, TYPES.var);
+		writeBufferProgram(SIZE.word, varIdx);
 	}
-	writeBufferProgram(SIZE.byte, TYPES.var);
-	writeBufferProgram(SIZE.word, varIdx);
 
 	return 0;
 	// return ERRORS.syntax;

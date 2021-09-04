@@ -15,6 +15,10 @@ const TYPES= {
 	var: 4,
 	fn: 5,
 	iterator: 6,
+	byte: 7,
+
+	ARRAY: 0x40,
+
 	END: 0xFF,
 	CLOSE: 0xFE,
 }
@@ -23,16 +27,29 @@ const CMDS= {
 	REM: 0,
 	PRINT: 1,
 	LET: 2,
+	DIM: 3,
+	AS: 4,
+	WORD: 5,
+	BYTE: 6,
+	INPUT: 8,
+
 	IF: 0x30,
 	THEN: 0x31,
 	ELSE: 0x32,
-	GOTO: 0x60,
-	GOSUB: 0x61,
-	INPUT: 8,
+
 	FOR: 0x40,
 	TO: 0x41,
 	STEP: 0x42,
 	NEXT: 0x43,
+
+	GOTO: 0x50,
+	GOSUB: 0x51,
+	RETURN: 0x52,
+	FUNCTION: 0x53,
+	END_FUNCTION: 0x54,
+
+	END: 0xFF,
+
 };
 
 const OPERATORS= {
@@ -49,13 +66,25 @@ const OPERATORS= {
 };
 
 const FNS= {
+	USER_DEF: 0,
 	INT: 100,
 	RND: 101,
+	CHR$: 200,
 };
 
 const ERRORS= {
 	SYNTAX_ERROR: 0xDEAD,
-	TYPE_MISMATCH: 0xCAFE
+	TYPE_MISMATCH: 0xCAFE,
+	UNKNOWN_FUNCTION: 0xFECA
+};
+
+const HEADER= {
+	VERSION: 0,
+	START: 2,
+	VARS: 4,
+	STRINGS: 6,
+	LINES: 8,
+	ARRAYS: 10,
 };
 
 const prgCode= {
@@ -64,14 +93,13 @@ const prgCode= {
 };
 
 const strings= [];
-const vars= [];
 
 const prgLines= {
 	buffer: new Uint8Array(255),
 	idx: 0
 };
 
-const headers= new Uint8Array(10);
+const headers= new Uint8Array(12);
 
 let lexer= {
 	buffer: "",
@@ -86,12 +114,12 @@ export {
 	headers,
 	prgLines,
 	strings,
-	vars,
 	prgCode,
 	ERRORS,
 	CMDS,
 	FNS,
 	OPERATORS,
 	SIZE,
-	TYPES
+	TYPES,
+	HEADER
 };

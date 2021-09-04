@@ -1,8 +1,10 @@
 import { CMDS, SIZE, TYPES } from "./defs.mjs";
 import { readBuffer, readBufferHeader, readBufferLine } from "./buffer.mjs";
 import { hexWord, hexByte } from "./utils.mjs";
-import { prgCode, strings, vars, ERRORS } from "./defs.mjs";
-import { setVar, findIteratorVar, setIteratorVar, getIteratorVar, ITERATOR } from "./var.mjs";
+import { prgCode, strings, ERRORS, HEADER } from "./defs.mjs";
+import { setVar, setIteratorVar, getIteratorVar, ITERATOR, getVarType, getVar } from "./vars.mjs";
+import { OPERATORS, FNS } from "./defs.mjs";
+import { addString, setTempStrings, resetTempStrings } from "./string.mjs";
 
 let expr= {
 	type: 0,
@@ -24,7 +26,8 @@ export function run(prg) {
 
 	let err;
 	let lineNum;
-	let lineIdx= readBufferHeader(8);
+	let lineIdx= readBufferHeader(HEADER.START);
+	setTempStrings();
 
 	while(lineIdx != 0xFFFF) {
 		lineNum= readBufferLine(lineIdx);
@@ -42,10 +45,20 @@ export function run(prg) {
 
 		const cmd= readBuffer(program, SIZE.byte);
 
+		// console.info("*** prg", Object.keys(CMDS)[Object.values(CMDS).indexOf(cmd)]);
 		// console.info("*** prg", hexWord(program.idx)," : ", hexByte(cmd));
 
 		err= null;
 		switch(cmd) {
+
+			case CMDS.REM: {
+				readBuffer(program, SIZE.word);
+				break;
+			}
+
+			case CMDS.END: {
+				return;
+			}
 
 			case CMDS.LET: {
 				const err= assignVar();
@@ -54,28 +67,74 @@ export function run(prg) {
 				break;
 			}
 
+			case CMDS.IF: {
+				const err= evalExpr();
+				if(err)
+					return err;
+
+				if(!expr.value)
+					break;
+
+				readBuffer(program, SIZE.byte);
+			}
+
+			case CMDS.GOTO: {
+				lineIdx= readBuffer(program, SIZE.word);
+				break;
+			}
+
 			case CMDS.PRINT: {
-				evalExpr();
-				switch(expr.type) {
-					case TYPES.string: {
-						console.log(strings[expr.value]);
-						break;
+				let sep;
+
+				while(sep != TYPES.END) {
+					let outStr= "";
+					const err= evalExpr();
+					if(err)
+						return err;
+
+					switch(expr.type) {
+						case TYPES.string: {
+							outStr+= strings[expr.value];
+							break;
+						}
+						case TYPES.int: {
+							outStr+= expr.value;
+							break;
+						}
+						case TYPES.float: {
+							break;
+						}
 					}
-					case TYPES.int: {
-						console.log(expr.value);
-						break;
-					}
-					case TYPES.float: {
-						break;
+
+					process.stdout.write(outStr);
+
+					sep= readBuffer(program, SIZE.byte);
+					switch(sep) {
+						case 0x09: {
+							process.stdout.write("\t");
+							sep= readBuffer(program, SIZE.byte, true);
+							break;
+						}
+						case 0x0A: {
+							sep= readBuffer(program, SIZE.byte, true);
+							break;
+						}
+						default: {
+							process.stdout.write("\n");
+							break;
+						}
 					}
 				}
+
 				break;
 			}
 
 			case CMDS.FOR: {
 				const iteratorIdx= readBuffer(program, SIZE.word);
 
-				evalExpr();
+				let err= evalExpr();
+				if(err)
+					return err;
 				if(expr.type == TYPES.string)
 					return ERRORS.TYPE_MISMATCH;
 
@@ -83,12 +142,16 @@ export function run(prg) {
 				setVar(varIdx, expr.value);
 
 				// upper bound
-				evalExpr();
-				setIteratorVar(iteratorIdx, ITERATOR.MAX, {type: expr.type, value: expr.value});
+				err= evalExpr();
+				if(err)
+					return err;
+				setIteratorVar(iteratorIdx, ITERATOR.MAX, expr.value);
 
 				// step
-				evalExpr();
-				setIteratorVar(iteratorIdx, ITERATOR.INC, {type: expr.type, value: expr.value});
+				err= evalExpr();
+				if(err)
+					return err;
+				setIteratorVar(iteratorIdx, ITERATOR.INC, expr.value);
 
 				setIteratorVar(iteratorIdx, ITERATOR.PTR, lineIdx);
 
@@ -98,14 +161,14 @@ export function run(prg) {
 			case CMDS.NEXT: {
 				const iteratorIdx= readBuffer(program, SIZE.word);
 
-				let inc= getIteratorVar(iteratorIdx, ITERATOR.INC).value;
-				let max= getIteratorVar(iteratorIdx, ITERATOR.MAX).value;
+				let inc= getIteratorVar(iteratorIdx, ITERATOR.INC);
+				let max= getIteratorVar(iteratorIdx, ITERATOR.MAX);
 				let varIdx= getIteratorVar(iteratorIdx, ITERATOR.VAR);
 
-				const sum= addInt16(inc, vars[varIdx].value);
-				setVar(varIdx, sum);
+				const sum= addInt16(inc, getVar(varIdx));
 
-				if( cmpInt16( vars[varIdx].value, max, "<=") ) {
+				if( cmpInt16( sum, max, "<=") ) {
+					setVar(varIdx, sum);
 					lineIdx= getIteratorVar(iteratorIdx, ITERATOR.PTR);
 				}
 
@@ -113,13 +176,15 @@ export function run(prg) {
 			}
 
 			default: {
-				err= "unknown statement";
+				err= `unknown statement ${hexByte(cmd)}`;
 				break;
 			}
 
 		}
 		if(err)
 			break;
+
+		resetTempStrings();
 
 	}
 
@@ -135,13 +200,19 @@ function cmpInt16(a ,b, op) {
 	switch(op) {
 		case "<=":
 			return a <= b;
+		case "<":
+			return a < b;
+		case "<>":
+			return a != b;
 	}
 	return false;
 }
 
 function assignVar(excluded= []) {
 	const varIdx= readBuffer(program, SIZE.word);
-	evalExpr();
+	const err= evalExpr();
+	if(err)
+		return err;
 
 	if(excluded.includes(expr.type))
 		return ERRORS.TYPE_MISMATCH;
@@ -164,30 +235,30 @@ function assignVar(excluded= []) {
 }
 
 function evalExpr() {
-	let itemType= 0;
+	const exprStack= [];
 
-	while(itemType != TYPES.END) {
+	while(true) {
 
-		itemType= readBuffer(program, SIZE.byte);
+		const itemType= readBuffer(program, SIZE.byte);
+		if(itemType == TYPES.END)
+			break;
 
 		switch(itemType) {
 
 			case TYPES.var: {
-				const varIdx= readBuffer(program, SIZE.byte);
-				const v= vars[varIdx];
-
-				expr.type= v.varType;
-				switch(v.varType) {
+				const varIdx= readBuffer(program, SIZE.word);
+				expr.type= getVarType(varIdx);
+				switch(expr.type) {
 					case TYPES.int: {
-						expr.value= v.value;
+						expr.value= getVar(varIdx);
 						break;
 					}
 					case TYPES.float: {
-						expr.value= v.value;
+						expr.value= getVar(varIdx);
 						break;
 					}
 					case TYPES.string: {
-						expr.value= v.value;
+						expr.value= getVar(varIdx);
 						break;
 					}
 				}
@@ -209,6 +280,61 @@ function evalExpr() {
 				break;
 			}
 
+			case TYPES.fn: {
+				const fnIdx= readBuffer(program, SIZE.byte);
+				const err= execFn(fnIdx, exprStack);
+				if(err)
+					return err;
+				continue;
+			}
+
 		}
+		exprStack.push({type: expr.type, value: expr.value});
 	}
+
+	// console.log("\n---- expr", exprStack);
+	expr= exprStack.length ? exprStack.pop() : expr;
+	return 0;
+}
+
+function execFn(fn, exprStack) {
+
+	switch(fn) {
+		case OPERATORS.ADD: {
+			const op1= exprStack.pop();
+			const op2= exprStack.pop();
+			exprStack.push({type: op1.type, value: op1.value + op2.value});
+			break;
+		}
+		case OPERATORS.SUB: {
+			const op1= exprStack.pop();
+			const op2= exprStack.pop();
+			exprStack.push({type: op1.type, value: op2.value - op1.value});
+			break;
+		}
+		case OPERATORS.MULT: {
+			const op1= exprStack.pop();
+			const op2= exprStack.pop();
+			exprStack.push({type: op1.type, value: op1.value * op2.value});
+			break;
+		}
+		case OPERATORS.GT: {
+			const op1= exprStack.pop();
+			const op2= exprStack.pop();
+			exprStack.push({type: op1.type, value: op2.value > op1.value});
+			break;
+		}
+		case FNS.CHR$: {
+			const op1= exprStack.pop();
+			op1.type= TYPES.string;
+			op1.value= addString(String.fromCharCode(op1.value));
+			exprStack.push(op1);
+			break;
+		}
+		default:
+			return ERRORS.UNKNOWN_FUNCTION
+	}
+
+	return 0;
+
 }

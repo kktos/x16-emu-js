@@ -37,13 +37,19 @@ function writeBufferLine(val, idx) {
 	writeBuffer(idx!= undefined ? p : prgLines, val, SIZE.word);
 }
 
-function readBuffer(p, size) {
+function readBuffer(p, size, lookahead= false) {
 	switch(size) {
-		case SIZE.byte:
-			return p.buffer[p.idx++];
+		case SIZE.byte: {
+			const value= p.buffer[p.idx];
+			if(!lookahead)
+				p.idx++;
+			return value;
+		}
 		case SIZE.word:
-			const value= p.buffer[p.idx++] & 0xff;
-			return value | (p.buffer[p.idx++] << 8);
+			const value= (p.buffer[p.idx] & 0xff) | (p.buffer[p.idx+1] << 8);
+			if(!lookahead)
+				p.idx+= 2;
+			return value;
 	}
 }
 

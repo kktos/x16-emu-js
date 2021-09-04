@@ -1,3 +1,6 @@
+import { TYPES } from "./defs.mjs";
+import { getString } from "./string.mjs";
+
 function _fillUp(value, count, fillWith) {
 	var l = count - value.length;
 	var ret = "";
