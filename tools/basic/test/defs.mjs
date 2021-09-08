@@ -17,21 +17,28 @@ const TYPES= {
 	iterator: 6,
 	byte: 7,
 
-	ARRAY: 0x40,
 
-	END: 0xFF,
-	CLOSE: 0xFE,
+	END: 0x00,
+	CLOSE: 0x60,
+
+	// MASK
+	FUNCTION: 0x20,
+	ARRAY: 0x40,
+	UNDECLARED: 0x80,
 }
 
 const CMDS= {
-	REM: 0,
-	PRINT: 1,
-	LET: 2,
-	DIM: 3,
-	AS: 4,
-	WORD: 5,
-	BYTE: 6,
-	INPUT: 8,
+	REM: 0x00,
+	DIM: 0x01,
+
+	PRINT: 0x05,
+	LET: 0x06,
+	SET: 0x07,
+	AS: 0x08,
+	WORD: 0x09,
+	BYTE: 0x0A,
+
+	INPUT: 0x10,
 
 	IF: 0x30,
 	THEN: 0x31,
@@ -67,6 +74,7 @@ const OPERATORS= {
 
 const FNS= {
 	USER_DEF: 0,
+	GET_ITEM: 10,
 	INT: 100,
 	RND: 101,
 	CHR$: 200,
@@ -75,7 +83,9 @@ const FNS= {
 const ERRORS= {
 	SYNTAX_ERROR: 0xDEAD,
 	TYPE_MISMATCH: 0xCAFE,
-	UNKNOWN_FUNCTION: 0xFECA
+	UNKNOWN_FUNCTION: 0xFECA,
+	UNDECLARED_VARIABLE: 0xCACA,
+	OVERFLOW: 0xFEFE
 };
 
 const HEADER= {

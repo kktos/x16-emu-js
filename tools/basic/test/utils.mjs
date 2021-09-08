@@ -1,5 +1,3 @@
-import { TYPES } from "./defs.mjs";
-import { getString } from "./string.mjs";
 
 function _fillUp(value, count, fillWith) {
 	var l = count - value.length;
@@ -25,7 +23,7 @@ export function hexdump(buffer, offset, length, width= 16) {
 			if (j < n) {
 				// var value = buffer.readUInt8(offset);
 				let value = buffer[offset];
-				string += value >= 32 ? String.fromCharCode(value) : ".";
+				string += ((value >= 32)&&(value<=127)) ? String.fromCharCode(value) : ".";
 				row += _fillUp(value.toString(16).toUpperCase(), 2, "0") + " ";
 				offset++;
 			}
@@ -46,4 +44,9 @@ export function hexByte(val) {
 
 export function hexWord(val) {
 	return val.toString(16).padStart(4, '0').toUpperCase();
+}
+
+export function EnumToName(en, value) {
+	const idx= Object.values(en).indexOf(value);
+	return idx>=0 ? Object.keys(en)[idx] : value;
 }

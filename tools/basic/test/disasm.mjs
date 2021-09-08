@@ -11,6 +11,7 @@ import { TYPES } from "./defs.mjs";
 import { OPERATORS } from "./defs.mjs";
 import { getVar, getVarName } from "./vars.mjs";
 import { readBufferHeader } from "./buffer.mjs";
+import { getString } from "./strings.mjs";
 
 let prgCursor= 0;
 let lineCursor= 0;
@@ -76,20 +77,10 @@ function disasLine() {
 			break;
 		}
 		case CMDS.FOR: {
-			// disasmVar();
 			let varIdx= readProgramWord();
 			console.log(hexWord(addr),":", hexWord(varIdx), "  ; iterator", getVarName(varIdx));
-
-			// varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", getVar(varIdx));
 			disasmExpr();
-
-			// varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", getVar(varIdx));
 			disasmExpr();
-
-			// varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "  ;", getVar(varIdx));
 			disasmExpr();
 			break;
 		}
@@ -110,6 +101,9 @@ function disasLine() {
 					case 0x0A:
 						dumpByte(sep, "no CR");
 						break;
+					case 0x00:
+						dumpByte(sep, "END OF PRINT");
+						break;
 				}
 				//dumpByte(readProgramByte(), "END");
 			}
@@ -119,6 +113,19 @@ function disasLine() {
 			const varIdx= readProgramWord();
 			console.log(hexWord(addr),":", hexWord(varIdx), "     ;", getVarName(varIdx)+" =");
 			disasmExpr();
+			break;
+		}
+		case CMDS.SET: {
+			const varIdx= readProgramWord();
+			console.log(hexWord(addr),":", hexWord(varIdx), "     ;", getVarName(varIdx)+"[] =");
+			disasmExpr();
+			disasmExpr();
+			break;
+		}
+		case CMDS.DIM: {
+			const varIdx= readProgramWord();
+			console.log(hexWord(addr),":", hexWord(varIdx), "     ;", getVarName(varIdx)+"[]");
+			// disasmExpr();
 			break;
 		}
 		case CMDS.REM: {
@@ -169,10 +176,9 @@ function disasmExpr() {
 				break;
 			}
 			case TYPES.string: {
-				const str= readProgramWord();
+				const strIdx= readProgramWord();
 				addr= memaddr;
-				dumpByte(itemType, " string");
-				dumpWord(str, '"' + strings[str]+ '"');
+				dumpByteWord(itemType, strIdx, `str: "${getString(strIdx)}"`);
 				break;
 			}
 			case TYPES.int: {
@@ -182,7 +188,7 @@ function disasmExpr() {
 				break;
 			}
 			case TYPES.var: {
-				const v= readProgramByte();
+				const v= readProgramWord();
 				addr= memaddr;
 				dumpByteWord(itemType, v, "var: "+getVarName(v));
 				break;

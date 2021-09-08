@@ -1,6 +1,7 @@
 import { TYPES } from "./defs.mjs";
-import { addString, getString } from "./string.mjs";
-import { hexByte, hexWord, hexdump } from "./utils.mjs";
+import { addString, getString, dumpStrings } from "./strings.mjs";
+import { hexByte, hexWord, hexdump, EnumToName } from "./utils.mjs";
+import { getArraySize } from "./arrays.mjs";
 
 // 2: namedIdx
 // 2: type
@@ -39,9 +40,13 @@ function readVarByte(idx, field) {
 	return varsBuffer[idx];
 }
 
-function writeVarByte(idx, field, word) {
+function writeVarByte(idx, field, byte) {
+	// console.log("writeVarByte", idx, EnumToName(FIELDS, field), byte);
+
 	idx= idx * VAR_RECORD_SIZE + field + 2;
-	varsBuffer[idx]= word & 0xFF;
+	varsBuffer[idx]= byte & 0xFF;
+
+	// console.log(hexdump(varsBuffer, 2, readWord(0)*VAR_RECORD_SIZE+2, 5));
 }
 
 function readVarWord(idx, field) {
@@ -50,12 +55,16 @@ function readVarWord(idx, field) {
 }
 
 function writeVarWord(idx, field, word) {
+	// console.log("writeVarWord", idx, EnumToName(FIELDS, field), word);
+
 	idx= idx * VAR_RECORD_SIZE + field + 2;
 	varsBuffer[idx]= word & 0xFF;
 	varsBuffer[idx+1]= word >> 8 & 0xFF;
+
+// console.log(hexdump(varsBuffer, 2, readWord(0)*VAR_RECORD_SIZE+2, 5));
 }
 
-export function addVar(name, isArray) {
+export function addVar(name, isArray= false, isDeclared= false) {
 	let varType;
 	switch(name[name.length-1]) {
 		case "$":
@@ -72,11 +81,21 @@ export function addVar(name, isArray) {
 	writeWord(0, count + 1);
 
 	const nameIdx= addString(name);
-	writeVarByte(count, FIELDS.TYPE, varType | (isArray ? TYPES.ARRAY : 0));
+
+	varType= varType | (isDeclared ? 0 : TYPES.UNDECLARED) | (isArray ? TYPES.ARRAY : 0)
+	writeVarByte(count, FIELDS.TYPE, varType);
 	writeVarWord(count, FIELDS.NAME, nameIdx);
 	writeVarWord(count, FIELDS.VALUE, 0);
 
 	return count;
+}
+
+export function declareVar(name, isArray) {
+	return addVar(name, isArray, true);
+}
+
+export function setVarDeclared(idx) {
+	writeVarByte(idx, FIELDS.TYPE, getVarType(idx) & (TYPES.UNDECLARED ^ 0xFF));
 }
 
 export function findVar(name) {
@@ -93,22 +112,26 @@ export function findVar(name) {
 
 export function setVar(idx, value) {
 	writeVarWord(idx, FIELDS.VALUE, value);
-	// vars[idx].value= value;
 }
 
 export function getVar(idx) {
 	return readVarWord(idx, FIELDS.VALUE);
-	// return vars[idx].value;
 }
 
 export function getVarName(idx) {
 	return getString(readVarWord(idx, FIELDS.NAME));
-	// return vars[idx].name;
 }
 
 export function getVarType(idx) {
 	return readVarByte(idx, FIELDS.TYPE);
-	// return vars[idx].varType;
+}
+
+export function setVarType(idx, type) {
+	return writeVarByte(idx, FIELDS.TYPE, getVarType(idx) & 0xC0 | type );
+}
+
+export function isVarArray(idx) {
+	return readVarByte(idx, FIELDS.TYPE) & TYPES.ARRAY;
 }
 
 export function addIteratorVar(idx) {
@@ -161,9 +184,12 @@ export function dumpVars() {
 		let type= readVarByte(idx, FIELDS.TYPE);
 		let value= readVarWord(idx, FIELDS.VALUE);
 
+		let arraySize;
 		const isArray= type & TYPES.ARRAY;
-		if(isArray)
+		if(isArray) {
 			type= type & (TYPES.ARRAY ^ 0xFF);
+			arraySize= getArraySize(value);
+		}
 
 		switch(type) {
 			case TYPES.string: {
@@ -181,7 +207,7 @@ export function dumpVars() {
 		console.log(
 			name,
 			":",
-			Object.keys(TYPES)[Object.values(TYPES).indexOf(type)] + (isArray?"[]":""),
+			Object.keys(TYPES)[Object.values(TYPES).indexOf(type)] + (isArray?"["+arraySize+"]":""),
 			"=",
 			value);
 

@@ -1,16 +1,27 @@
 import { hexWord } from "./utils.mjs";
 import { parseSource } from "./parser.mjs";
 import { run } from "./vm.mjs";
-import { ERRORS, strings } from "./defs.mjs";
-import { dumpVars } from "./vars.mjs";
+import { ERRORS } from "./defs.mjs";
+import { dumpVars } from "./vars.mjs";1
+import { dumpArrays } from "./arrays.mjs";1
+import { dumpStrings } from "./strings.mjs";1
 
 const src= `
-10 dim a$(2)
-20 for i%=0 to 2
-30 let a$(i%)= chr$(65+i)
-40 next i%
+40 print test()
+50 end
+100 function test
+200 return 3
+300 end function
 `;
 /*
+10 dim a$(10)
+20 for i%=0 to 9
+25 let tmp$= chr$(65+i%)
+30 let a$(i%)= tmp$
+31 let tmp$="prout"
+35 print a$(i%)
+40 next i%
+
 140 dim tab%(10)
 150 print tab%[5]
 
@@ -70,7 +81,7 @@ if(!prg)
 	process.exit();
 
 console.log("************************************");
-console.log("*             RUN                   *");
+console.log("*             RUN                  *");
 console.log("************************************");
 
 const err= run(prg);
@@ -84,6 +95,10 @@ console.log("----------- VARS");
 console.log("");
 dumpVars();
 console.log("");
+console.log("----------- ARRAYS");
+console.log("");
+dumpArrays();
+console.log("");
 console.log("----------- STRINGS");
 console.log("");
-console.log(strings);
+dumpStrings();

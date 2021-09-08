@@ -7,11 +7,12 @@ import {
 	identiferChars,
 	numberChars,
 	ws,
-	lexer
+	lexer,
+	prgCode
 } from "./defs.mjs";
 import { writeBufferProgram } from "./buffer.mjs";
-import { addVar, findVar } from "./vars.mjs";
-import { addString } from "./string.mjs";
+import { addVar, findVar, isVarArray } from "./vars.mjs";
+import { addString } from "./strings.mjs";
 
 export function nextToken(lookahead= false) {
 	let currIdx= lexer.idx;
@@ -39,7 +40,7 @@ export function nextToken(lookahead= false) {
 
 	const token= lexer.buffer.slice(idxSOT, currIdx);
 
-	console.log(lookahead ? "lookahead" : "nextToken",` <${token}> len:${token.length}`);
+	// console.log(lookahead ? "lookahead" : "nextToken",` <${token}> len:${token.length}`);
 
 	if(!lookahead)
 		lexer.idx= currIdx + (isString?1:0);
@@ -279,7 +280,15 @@ function parseTerm() {
 		return 0;
 	}
 
-	if(nextToken(true) == "(") {
+	const isFnCall= nextToken(true) == "(";
+	let varIdx= findVar(tok);
+	if(varIdx<0)
+		varIdx= addVar(tok);
+
+	writeBufferProgram(SIZE.byte, TYPES.var);
+	writeBufferProgram(SIZE.word, varIdx);
+
+	if(isVarArray(varIdx)) {
 		nextToken();
 
 		const err= parseExpr();
@@ -290,18 +299,35 @@ function parseTerm() {
 			return ERRORS.syntax;
 
 		writeBufferProgram(SIZE.byte, TYPES.fn);
-		writeBufferProgram(SIZE.byte, FNS.USER_DEF);
-		return 0;
+		writeBufferProgram(SIZE.byte, FNS.GET_ITEM);
+
+		// writeBufferProgram(SIZE.byte, TYPES.END);
 	}
 
-	if(identiferChars.includes(tok[0])) {
-		let varIdx= findVar(tok);
-		if(varIdx<0) {
-			varIdx= addVar(tok)
-		}
-		writeBufferProgram(SIZE.byte, TYPES.var);
-		writeBufferProgram(SIZE.word, varIdx);
-	}
+
+	// if(nextToken(true) == "(") {
+	// 	nextToken();
+
+	// 	const err= parseExpr();
+	// 	if(err)
+	// 		return err;
+
+	// 	if(nextToken() != ")")
+	// 		return ERRORS.syntax;
+
+	// 	writeBufferProgram(SIZE.byte, TYPES.fn);
+	// 	writeBufferProgram(SIZE.byte, FNS.USER_DEF);
+	// 	return 0;
+	// }
+
+	// if(identiferChars.includes(tok[0])) {
+	// 	let varIdx= findVar(tok);
+	// 	if(varIdx<0) {
+	// 		varIdx= addVar(tok)
+	// 	}
+	// 	writeBufferProgram(SIZE.byte, TYPES.var);
+	// 	writeBufferProgram(SIZE.word, varIdx);
+	// }
 
 	return 0;
 	// return ERRORS.syntax;

@@ -4,6 +4,7 @@ import {
 	prgCode,
 	SIZE,
 } from "./defs.mjs";
+import { hexWord, hexByte } from "./utils.mjs";
 
 function writeBuffer(p, value, size) {
 	switch(size) {
@@ -18,6 +19,9 @@ function writeBuffer(p, value, size) {
 }
 
 function writeBufferProgram(size, value) {
+
+	// console.log("writeBufferProgram", hexWord(prgCode.idx), size, size==1 ? hexByte(value):hexWord(value));
+
 	writeBuffer(prgCode, value, size);
 }
 

@@ -1,31 +1,95 @@
-import { setVar } from "./vars.mjs";
-import { hexdump } from "./utils.mjs";
+import { hexdump, hexWord } from "./utils.mjs";
+import { ERRORS } from "./defs.mjs";
+import { TYPES } from "./defs.mjs";
 
 const ARRAY_RECORD_SIZE= 2 + 2;
-const arraysList= new Uint8Array(2 + 20 * ARRAY_RECORD_SIZE);
-const arraysData= new Uint8Array(2 + 20 * 255);
+const arrayList= new Uint8Array(2 + 20 * ARRAY_RECORD_SIZE);
+const arrayData= new Uint8Array(2 + 20 * 255);
 
-for(let idx=0; idx<arraysList.length; idx++)
-	arraysList[idx]= 0xFF;
+for(let idx=0; idx<arrayList.length; idx++)
+	arrayList[idx]= 0xFF;
 
-writeWord(arraysList, 0, 0);
-writeWord(arraysData, 0, 2);
+writeWord(arrayList, 0, 0);
+writeWord(arrayData, 0, 2);
 
-export function addArray(varIdx, dim) {
-	let count= readWord(arraysList, 0);
-	writeWord(arraysList, 0, count + 1);
+export function addArray(varType, dim) {
+	let count= readWord(arrayList, 0);
+	writeWord(arrayList, 0, count + 1);
 
-	setVar(varIdx, count);
-	writeWord(arraysList, 2+count*ARRAY_RECORD_SIZE, dim);
+	writeWord(arrayList, 2+count*ARRAY_RECORD_SIZE, dim);
 
-	let freePtr= readWord(arraysData, 0);
-	writeWord(arraysData, 0, freePtr + dim*2);
+	let itemSize= 2;
+	switch(varType) {
+		case TYPES.byte: {
+			itemSize= 1;
+			break;
+		}
+	}
+	let freePtr= readWord(arrayData, 0);
+	writeWord(arrayData, 0, freePtr + dim * itemSize);
 
-	writeWord(arraysList, 2+count*ARRAY_RECORD_SIZE+2, freePtr);
+	for(let idx=freePtr; idx<freePtr + dim * itemSize; idx++)
+		arrayData[idx]= 0xFF;
+
+	writeWord(arrayList, 2+count*ARRAY_RECORD_SIZE+2, freePtr);
+
+	return count;
+}
+
+export function getArraySize(arrayIdx) {
+	return readWord(arrayList, 2+arrayIdx*ARRAY_RECORD_SIZE);
+}
+
+export function getArrayPtr(arrayIdx) {
+	return readWord(arrayList, 2+arrayIdx*ARRAY_RECORD_SIZE+2);
+}
+
+export function setArrayItem(varType, arrayIdx, idx, value) {
+	if(idx >= getArraySize(arrayIdx))
+		return ERRORS.OVERFLOW;
+
+	let addr= getArrayPtr(arrayIdx);
+	switch(varType & 0x3F) {
+		case TYPES.string:
+		case TYPES.int: {
+			addr+= idx * 2;
+			writeWord(arrayData, addr, value);
+			break;
+		}
+		case TYPES.byte: {
+			addr+= idx;
+			writeByte(arrayData, addr, value);
+			break;
+		}
+	}
+	return 0;
+}
+
+export function getArrayItem(varType, arrayIdx, idx) {
+	let addr= getArrayPtr(arrayIdx);
+	switch(varType) {
+		case TYPES.string:
+		case TYPES.int: {
+			addr+= idx * 2;
+			return readWord(arrayData, addr);
+		}
+		case TYPES.byte: {
+			addr+= idx;
+			return readByte(arrayData, addr);
+		}
+	}
+}
+
+function readByte(buffer, idx) {
+	return buffer[idx];
 }
 
 function readWord(buffer, idx) {
 	return buffer[idx] | buffer[idx+1] << 8;
+}
+
+function writeByte(buffer, idx, byte) {
+	buffer[idx]= byte & 0xFF;
 }
 
 function writeWord(buffer, idx, word) {
@@ -33,16 +97,23 @@ function writeWord(buffer, idx, word) {
 	buffer[idx+1]= word >> 8 & 0xFF;
 }
 
+export function dumpArray(arrayIdx) {
+	let addr= getArrayPtr(arrayIdx);
+	const size= getArraySize(arrayIdx);
+	console.log("idx",arrayIdx,"size",size);
+	console.log(hexdump(arrayData, addr, size));
+}
+
 export function dumpArrays() {
 
 	let idx= 0;
-	let count= readWord(arraysList, 0);
+	let count= readWord(arrayList, 0);
 	console.log("count:", count);
-	console.log(hexdump(arraysList, 2, count * ARRAY_RECORD_SIZE + 2, 4));
+	console.log(hexdump(arrayList, 2, count * ARRAY_RECORD_SIZE + 2, 4));
 
-	let freeIdx= readWord(arraysData, 0);
+	let freeIdx= readWord(arrayData, 0);
 	console.log("size:", freeIdx);
-	console.log(hexdump(arraysData, 2, freeIdx + 2));
+	console.log(hexdump(arrayData, 2, freeIdx, 16));
 
 	// while(idx < count) {
 	// 	const nameIdx= readVarWord(idx, FIELDS.NAME);

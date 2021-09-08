@@ -1,10 +1,11 @@
 import { CMDS, SIZE, TYPES } from "./defs.mjs";
 import { readBuffer, readBufferHeader, readBufferLine } from "./buffer.mjs";
 import { hexWord, hexByte } from "./utils.mjs";
-import { prgCode, strings, ERRORS, HEADER } from "./defs.mjs";
+import { prgCode, ERRORS, HEADER } from "./defs.mjs";
 import { setVar, setIteratorVar, getIteratorVar, ITERATOR, getVarType, getVar } from "./vars.mjs";
+import { setArrayItem, getArrayItem } from "./arrays.mjs";
 import { OPERATORS, FNS } from "./defs.mjs";
-import { addString, setTempStrings, resetTempStrings } from "./string.mjs";
+import { addString, setTempStrings, resetTempStrings, getString } from "./strings.mjs";
 
 let expr= {
 	type: 0,
@@ -51,6 +52,7 @@ export function run(prg) {
 		err= null;
 		switch(cmd) {
 
+			case CMDS.DIM:
 			case CMDS.REM: {
 				readBuffer(program, SIZE.word);
 				break;
@@ -62,6 +64,14 @@ export function run(prg) {
 
 			case CMDS.LET: {
 				const err= assignVar();
+				if(err)
+					return err;
+				break;
+			}
+
+			case CMDS.SET: {
+				// console.log("SET", prgCode);
+				const err= assignArrayItem();
 				if(err)
 					return err;
 				break;
@@ -94,9 +104,10 @@ export function run(prg) {
 
 					switch(expr.type) {
 						case TYPES.string: {
-							outStr+= strings[expr.value];
+							outStr+= getString(expr.value);
 							break;
 						}
+						case TYPES.byte:
 						case TYPES.int: {
 							outStr+= expr.value;
 							break;
@@ -210,28 +221,55 @@ function cmpInt16(a ,b, op) {
 
 function assignVar(excluded= []) {
 	const varIdx= readBuffer(program, SIZE.word);
-	const err= evalExpr();
+	let err= evalExpr();
 	if(err)
 		return err;
+
+	// err= evalExpr();
+	// if(err)
+	// 	return err;
 
 	if(excluded.includes(expr.type))
 		return ERRORS.TYPE_MISMATCH;
 
-	switch(expr.type) {
-		case TYPES.string: {
-			setVar(varIdx, expr.value);
-			break;
-		}
-		case TYPES.int: {
-			setVar(varIdx, expr.value);
-			break;
-		}
-		case TYPES.float: {
-			setVar(varIdx, expr.value);
-			break;
-		}
-	}
+	setVar(varIdx, expr.value);
+
+	// switch(expr.type) {
+	// 	case TYPES.string: {
+	// 		setVar(varIdx, expr.value);
+	// 		break;
+	// 	}
+	// 	case TYPES.int: {
+	// 		setVar(varIdx, expr.value);
+	// 		break;
+	// 	}
+	// 	case TYPES.float: {
+	// 		setVar(varIdx, expr.value);
+	// 		break;
+	// 	}
+	// }
 	return 0;
+}
+
+function assignArrayItem() {
+	const varIdx= readBuffer(program, SIZE.word);
+	let err= evalExpr();
+	if(err)
+		return err;
+
+	if(expr.type != TYPES.int)
+		return ERRORS.TYPE_MISMATCH;
+
+	const idx= expr.value;
+
+	err= evalExpr();
+	if(err)
+		return err;
+
+	const arrayIdx= getVar(varIdx);
+	err= setArrayItem(getVarType(varIdx), arrayIdx, idx, expr.value);
+	if(err)
+		return err;
 }
 
 function evalExpr() {
@@ -247,7 +285,7 @@ function evalExpr() {
 
 			case TYPES.var: {
 				const varIdx= readBuffer(program, SIZE.word);
-				expr.type= getVarType(varIdx);
+				expr.type= getVarType(varIdx);// & 0x3F;
 				switch(expr.type) {
 					case TYPES.int: {
 						expr.value= getVar(varIdx);
@@ -258,6 +296,10 @@ function evalExpr() {
 						break;
 					}
 					case TYPES.string: {
+						expr.value= getVar(varIdx);
+						break;
+					}
+					default: {
 						expr.value= getVar(varIdx);
 						break;
 					}
@@ -329,6 +371,18 @@ function execFn(fn, exprStack) {
 			op1.type= TYPES.string;
 			op1.value= addString(String.fromCharCode(op1.value));
 			exprStack.push(op1);
+			break;
+		}
+		case FNS.GET_ITEM: {
+			const op1= exprStack.pop();
+			const arr= exprStack.pop();
+
+			if((op1.type != TYPES.int) && !(arr.type & TYPES.ARRAY))
+				return ERRORS.TYPE_MISMATCH;
+
+			arr.type= arr.type & 0x3F;
+			arr.value= getArrayItem(arr.type, arr.value, op1.value);
+			exprStack.push(arr);
 			break;
 		}
 		default:

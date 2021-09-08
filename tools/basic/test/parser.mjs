@@ -14,9 +14,10 @@ import {
 } from "./defs.mjs";
 import { parseExpr, nextToken } from "./expr.mjs";
 import { writeBufferProgram, writeBufferHeader, writeBufferLine, readBufferHeader } from "./buffer.mjs";
-import { addVar, findVar, addIteratorVar, findIteratorVar, dumpVars } from "./vars.mjs";
-import { addString } from "./string.mjs";
+import { addVar, declareVar, setVarDeclared, findVar, addIteratorVar, findIteratorVar, dumpVars } from "./vars.mjs";
+import { addString } from "./strings.mjs";
 import { addArray, dumpArrays } from "./arrays.mjs";
+import { getVarType, setVarType, setVar } from "./vars.mjs";
 
 let currentLineNum;
 
@@ -127,16 +128,23 @@ function parseLine() {
 	switch(cmd) {
 		case CMDS.LET: {
 			const varName= nextToken();
+			let tok= nextToken();
+			const isArray= tok == "(";
 
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= addVar(varName)
+				varIdx= isArray ? addVar(varName, true) : declareVar(varName);
+			} else
+				setVarDeclared(varIdx);
+
+			if(isArray) {
+				prgCode.idx--;
+				writeBufferProgram(SIZE.byte, CMDS.SET);
 			}
+
 			writeBufferProgram(SIZE.word, varIdx);
 
-			let isArray= false;
-			const tok= nextToken();
-			if(tok == "(") {
+			if(isArray) {
 				const err= parseExpr();
 				if(err)
 					return err;
@@ -145,10 +153,11 @@ function parseLine() {
 
 				if(nextToken() != ")")
 					return ERRORS.SYNTAX_ERROR;
-				isArray= true;
+
+				tok= nextToken();
 			}
 
-			if(nextToken() != "=")
+			if(tok != "=")
 				return ERRORS.SYNTAX_ERROR;
 
 			const err= parseExpr();
@@ -164,7 +173,17 @@ function parseLine() {
 
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= addVar(varName, true)
+				varIdx= declareVar(varName, true);
+			} else {
+				const isArray= getVarType(varIdx) & TYPES.ARRAY;
+				if(!isArray)
+					return ERRORS.TYPE_MISMATCH;
+
+				const isDeclared= !(getVarType(varIdx) & TYPES.UNDECLARED);
+				if(isDeclared)
+					return ERRORS.TYPE_MISMATCH;
+
+				setVarDeclared(varIdx);
 			}
 			writeBufferProgram(SIZE.word, varIdx);
 
@@ -178,7 +197,27 @@ function parseLine() {
 			if(nextToken() != ")")
 				return ERRORS.SYNTAX_ERROR;
 
-			addArray(varIdx, dim);
+			if(parseCmd(true) == CMDS.AS) {
+				if(getVarType(varIdx) & 0x3F != TYPES.int)
+					return ERRORS.TYPE_MISMATCH;
+
+				nextToken();
+				const size= parseCmd();
+				switch(size) {
+					case CMDS.BYTE: {
+						setVarType(varIdx, TYPES.byte);
+						break;
+					}
+					case CMDS.WORD: {
+						break;
+					}
+					default:
+						return ERRORS.SYNTAX_ERROR;
+				}
+			}
+
+			const arrIdx= addArray(getVarType(varIdx) & 0x3F, dim);
+			setVar(varIdx, arrIdx);
 
 			break;
 		}
@@ -200,7 +239,7 @@ function parseLine() {
 			const varName= nextToken();
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= addVar(varName)
+				varIdx= declareVar(varName);
 			}
 			let iteratorIdx= addIteratorVar(varIdx);
 			writeBufferProgram(SIZE.word, iteratorIdx);
@@ -304,6 +343,7 @@ function parseLine() {
 					break;
 				}
 			}
+			break;
 		}
 
 		case CMDS.RETURN: {
