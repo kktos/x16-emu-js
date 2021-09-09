@@ -110,6 +110,10 @@ export function findVar(name) {
 	return -1;
 }
 
+export function setVarFunction(idx) {
+	writeVarByte(idx, FIELDS.TYPE, getVarType(idx) | TYPES.FUNCTION );
+}
+
 export function setVar(idx, value) {
 	writeVarWord(idx, FIELDS.VALUE, value);
 }
@@ -127,11 +131,19 @@ export function getVarType(idx) {
 }
 
 export function setVarType(idx, type) {
-	return writeVarByte(idx, FIELDS.TYPE, getVarType(idx) & 0xC0 | type );
+	return writeVarByte(idx, FIELDS.TYPE, getVarType(idx) & TYPES.FLAGS | type );
 }
 
 export function isVarArray(idx) {
 	return readVarByte(idx, FIELDS.TYPE) & TYPES.ARRAY;
+}
+
+export function isVarDeclared(idx) {
+	return !(readVarByte(idx, FIELDS.TYPE) & TYPES.UNDECLARED);
+}
+
+export function isVarFunction(idx) {
+	return readVarByte(idx, FIELDS.TYPE) & TYPES.FUNCTION;
 }
 
 export function addIteratorVar(idx) {
@@ -187,27 +199,33 @@ export function dumpVars() {
 		let arraySize;
 		const isArray= type & TYPES.ARRAY;
 		if(isArray) {
-			type= type & (TYPES.ARRAY ^ 0xFF);
+			// type= type & (TYPES.ARRAY ^ 0xFF);
 			arraySize= getArraySize(value);
 		}
+		const isFunction= type & TYPES.FUNCTION;
 
-		switch(type) {
-			case TYPES.string: {
-				value= value ? '"' + getString(value) + '"' : undefined;
-				break;
+		type&= TYPES.SCALAR;
+
+		if(!isFunction)
+			switch(type) {
+				case TYPES.string: {
+					value= value ? '"' + getString(value) + '"' : undefined;
+					break;
+				}
+				case TYPES.iterator: {
+					idx++;
+					const max= readVarWord(idx, FIELDS.NAME);
+					const ptr= readVarWord(idx, FIELDS.VALUE);
+					value= `INC:${hexWord(value)} MAX:${hexWord(max)} PTR:${hexWord(ptr)}`;
+				}
 			}
-			case TYPES.iterator: {
-				idx++;
-				const max= readVarWord(idx, FIELDS.NAME);
-				const ptr= readVarWord(idx, FIELDS.VALUE);
-				value= `INC:${hexWord(value)} MAX:${hexWord(max)} PTR:${hexWord(ptr)}`;
-			}
-		}
 
 		console.log(
 			name,
 			":",
-			Object.keys(TYPES)[Object.values(TYPES).indexOf(type)] + (isArray?"["+arraySize+"]":""),
+			EnumToName(TYPES, type)
+				+ (isArray ? "["+arraySize+"]" : "")
+				+ (isFunction ? "()" : "")				,
 			"=",
 			value);
 

@@ -48,5 +48,5 @@ export function hexWord(val) {
 
 export function EnumToName(en, value) {
 	const idx= Object.values(en).indexOf(value);
-	return idx>=0 ? Object.keys(en)[idx] : value;
+	return idx>=0 ? Object.keys(en)[idx] : hexByte(value);
 }

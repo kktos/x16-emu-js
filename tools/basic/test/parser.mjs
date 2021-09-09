@@ -17,7 +17,7 @@ import { writeBufferProgram, writeBufferHeader, writeBufferLine, readBufferHeade
 import { addVar, declareVar, setVarDeclared, findVar, addIteratorVar, findIteratorVar, dumpVars } from "./vars.mjs";
 import { addString } from "./strings.mjs";
 import { addArray, dumpArrays } from "./arrays.mjs";
-import { getVarType, setVarType, setVar } from "./vars.mjs";
+import { getVarType, setVarType, setVarFunction, setVar, isVarDeclared } from "./vars.mjs";
 
 let currentLineNum;
 
@@ -37,9 +37,13 @@ export function parseSource(src) {
 		lexer.buffer= lines[idx];
 		const err= parseLine();
 		if(err) {
-			console.error("ERR", hexWord(err), ` at ${currentLineNum} : <${lexer.buffer.slice(lexer.idx)}>`);
-			dump(lines);
-			return null;
+			// console.error("ERR", hexWord(err), ` at ${currentLineNum} : <${lexer.buffer.slice(lexer.idx)}>`);
+			// dump(lines);
+			return {
+				err,
+				lineNum: currentLineNum,
+				lines
+			};
 		}
 	}
 
@@ -109,6 +113,7 @@ function parseGoto() {
 }
 
 function parseLine() {
+	let lineIdx;
 
 	const tok= nextToken();
 	if(tok == null)
@@ -122,7 +127,7 @@ function parseLine() {
 	if(cmd == -1)
 		return ERRORS.SYNTAX_ERROR;
 
-	addPrgLine(currentLineNum, prgCode.idx);
+	lineIdx= addPrgLine(currentLineNum, prgCode.idx);
 	writeBufferProgram(SIZE.byte, cmd);
 
 	switch(cmd) {
@@ -346,11 +351,27 @@ function parseLine() {
 			break;
 		}
 
+		case CMDS.FUNCTION: {
+			const name= nextToken();
+			let varIdx= findVar(name);
+			if(varIdx>=0) {
+				if(isVarDeclared(varIdx))
+					return ERRORS.DUPLICATE_NAME;
+
+				setVarDeclared(varIdx);
+				setVarFunction(varIdx);
+				setVar(varIdx, lineIdx);
+			}
+			writeBufferProgram(SIZE.word, varIdx);
+			break;
+		}
+
 		case CMDS.RETURN: {
 			const err= parseExpr();
 			if(err)
 				return err;
 			writeBufferProgram(SIZE.byte, TYPES.END);
+			break;
 		}
 
 		default: {

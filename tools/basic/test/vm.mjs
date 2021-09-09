@@ -2,7 +2,10 @@ import { CMDS, SIZE, TYPES } from "./defs.mjs";
 import { readBuffer, readBufferHeader, readBufferLine } from "./buffer.mjs";
 import { hexWord, hexByte } from "./utils.mjs";
 import { prgCode, ERRORS, HEADER } from "./defs.mjs";
-import { setVar, setIteratorVar, getIteratorVar, ITERATOR, getVarType, getVar } from "./vars.mjs";
+import {
+	setVar, setIteratorVar, getIteratorVar, ITERATOR, getVarType, getVar,
+	isVarFunction, isVarDeclared, getVarName
+} from "./vars.mjs";
 import { setArrayItem, getArrayItem } from "./arrays.mjs";
 import { OPERATORS, FNS } from "./defs.mjs";
 import { addString, setTempStrings, resetTempStrings, getString } from "./strings.mjs";
@@ -15,6 +18,7 @@ let program= {
 	buffer: prgCode.buffer,
 	idx: 0
 };
+let context;
 
 /*
 	headers: headers,
@@ -24,33 +28,67 @@ let program= {
 	vars: vars,
 */
 export function run(prg) {
+	context= {...prg};
+	context.lineIdx= readBufferHeader(HEADER.START);
+	context.level= 0;
+	context.returnExpr= null;
 
-	let err;
+	setTempStrings(context.lineIdx);
+
+	return execStatements(context);
+}
+
+function execStatements(context) {
 	let lineNum;
-	let lineIdx= readBufferHeader(HEADER.START);
-	setTempStrings();
+	let err;
 
-	while(lineIdx != 0xFFFF) {
-		lineNum= readBufferLine(lineIdx);
-		program.idx= readBufferLine(lineIdx+2);
-		lineIdx= readBufferLine(lineIdx+4);
+	while(context.lineIdx != 0xFFFF) {
+		lineNum= readBufferLine(context.lineIdx);
+		program.idx= readBufferLine(context.lineIdx+2);
+		context.lineIdx= readBufferLine(context.lineIdx+4);
 
-		prg.lineNum= lineNum;
+		context.lineNum= lineNum;
 
 		// console.info("*** line", lineNum, hexWord(program.idx));
 
-		if(program.idx == 0xFFFF) {
-			err= `line ${lineNum} is missing`;
-			break;
-		}
+		if(program.idx == 0xFFFF)
+			return ERRORS.LINE_MISSING;
 
 		const cmd= readBuffer(program, SIZE.byte);
 
 		// console.info("*** prg", Object.keys(CMDS)[Object.values(CMDS).indexOf(cmd)]);
 		// console.info("*** prg", hexWord(program.idx)," : ", hexByte(cmd));
 
-		err= null;
 		switch(cmd) {
+
+			case CMDS.FUNCTION: {
+				// function could be run only on call (level>0)
+				if(!context.level)
+					return ERRORS.ILLEGAL_STATEMENT;
+				break;
+			}
+
+			case CMDS.RETURN: {
+				// return only from a function (level>0)
+				if(!context.level)
+					return ERRORS.ILLEGAL_STATEMENT;
+
+				err= evalExpr();
+				if(err)
+					return err;
+
+				context.returnExpr= expr;
+				return;
+			}
+
+			case CMDS.END_FUNCTION: {
+				// return only from a function (level>0)
+				if(!context.level)
+					return ERRORS.ILLEGAL_STATEMENT;
+
+				context.returnExpr= {type: 0, value: 0};
+				return;
+			}
 
 			case CMDS.DIM:
 			case CMDS.REM: {
@@ -59,11 +97,15 @@ export function run(prg) {
 			}
 
 			case CMDS.END: {
+				// allowed only on main prg, not in functions
+				if(context.level)
+					return ERRORS.ILLEGAL_STATEMENT;
+
 				return;
 			}
 
 			case CMDS.LET: {
-				const err= assignVar();
+				err= assignVar();
 				if(err)
 					return err;
 				break;
@@ -71,14 +113,14 @@ export function run(prg) {
 
 			case CMDS.SET: {
 				// console.log("SET", prgCode);
-				const err= assignArrayItem();
+				err= assignArrayItem();
 				if(err)
 					return err;
 				break;
 			}
 
 			case CMDS.IF: {
-				const err= evalExpr();
+				err= evalExpr();
 				if(err)
 					return err;
 
@@ -89,7 +131,7 @@ export function run(prg) {
 			}
 
 			case CMDS.GOTO: {
-				lineIdx= readBuffer(program, SIZE.word);
+				context.lineIdx= readBuffer(program, SIZE.word);
 				break;
 			}
 
@@ -98,7 +140,7 @@ export function run(prg) {
 
 				while(sep != TYPES.END) {
 					let outStr= "";
-					const err= evalExpr();
+					err= evalExpr();
 					if(err)
 						return err;
 
@@ -143,7 +185,7 @@ export function run(prg) {
 			case CMDS.FOR: {
 				const iteratorIdx= readBuffer(program, SIZE.word);
 
-				let err= evalExpr();
+				err= evalExpr();
 				if(err)
 					return err;
 				if(expr.type == TYPES.string)
@@ -164,7 +206,7 @@ export function run(prg) {
 					return err;
 				setIteratorVar(iteratorIdx, ITERATOR.INC, expr.value);
 
-				setIteratorVar(iteratorIdx, ITERATOR.PTR, lineIdx);
+				setIteratorVar(iteratorIdx, ITERATOR.PTR, context.lineIdx);
 
 				break;
 			}
@@ -180,27 +222,21 @@ export function run(prg) {
 
 				if( cmpInt16( sum, max, "<=") ) {
 					setVar(varIdx, sum);
-					lineIdx= getIteratorVar(iteratorIdx, ITERATOR.PTR);
+					context.lineIdx= getIteratorVar(iteratorIdx, ITERATOR.PTR);
 				}
 
 				break;
 			}
 
-			default: {
-				err= `unknown statement ${hexByte(cmd)}`;
-				break;
-			}
+			default:
+				return ERRORS.UNKNOWN_STATEMENT;
 
 		}
-		if(err)
-			break;
 
 		resetTempStrings();
 
 	}
 
-	if(err)
-		console.error(err);
 }
 
 function addInt16(a ,b) {
@@ -285,6 +321,35 @@ function evalExpr() {
 
 			case TYPES.var: {
 				const varIdx= readBuffer(program, SIZE.word);
+
+				// console.log("evalExpr", getVarName(varIdx), hexWord(getVarType(varIdx)));
+
+				const isDeclared= isVarDeclared(varIdx);
+				const isFunction= isVarFunction(varIdx);
+
+				if(isFunction) {
+					if(!isDeclared)
+						return ERRORS.UNKNOWN_FUNCTION;
+
+					const lineIdx= context.lineIdx;
+					const prgIdx= program.idx;
+
+					context.level++;
+					context.lineIdx= getVar(varIdx);
+
+					const err= execStatements(context);
+					if(err)
+						return err;
+
+					context.level--;
+					program.idx= prgIdx;
+					context.lineIdx= lineIdx;
+
+					expr= context.returnExpr;
+
+					break;
+				}
+
 				expr.type= getVarType(varIdx);// & 0x3F;
 				switch(expr.type) {
 					case TYPES.int: {

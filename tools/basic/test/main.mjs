@@ -1,4 +1,4 @@
-import { hexWord } from "./utils.mjs";
+import { hexWord, EnumToName } from "./utils.mjs";
 import { parseSource } from "./parser.mjs";
 import { run } from "./vm.mjs";
 import { ERRORS } from "./defs.mjs";
@@ -7,13 +7,31 @@ import { dumpArrays } from "./arrays.mjs";1
 import { dumpStrings } from "./strings.mjs";1
 
 const src= `
-40 print test()
+40 print test%()
 50 end
-100 function test
-200 return 3
+100 function test%
 300 end function
 `;
 /*
+10 print peek%(36)
+20 end
+30 function peek
+40 asm {
+	lda $20
+	pha
+	lda $21
+	pha
+	jsr getparm
+	sta $20
+	stx $21
+	ldy #0
+	lda ($21),y
+	tax
+	lda ($20),y
+	jsr setreturn
+}
+50 end function
+
 10 dim a$(10)
 20 for i%=0 to 9
 25 let tmp$= chr$(65+i%)
@@ -77,8 +95,11 @@ const src= `
  */
 
 const prg= parseSource(src);
-if(!prg)
+if(prg.err) {
+	console.error(`ERR ${hexWord(prg.err)} - ${EnumToName(ERRORS, prg.err)}`, prg.lineNum );
+	console.log(prg.lines);
 	process.exit();
+}
 
 console.log("************************************");
 console.log("*             RUN                  *");
@@ -86,8 +107,7 @@ console.log("************************************");
 
 const err= run(prg);
 if(err) {
-	const idx= Object.values(ERRORS).indexOf(err);
-	console.error(`ERR ${hexWord(err)} - ${Object.keys(ERRORS)[idx]}`, prg.lineNum );
+	console.error(`ERR ${hexWord(err)} - ${EnumToName(ERRORS, err)}`, prg.lineNum );
 }
 
 console.log("");

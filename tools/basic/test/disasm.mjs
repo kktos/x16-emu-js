@@ -34,7 +34,7 @@ function readLineWord() {
 function disasmVar() {
 	const varType= readProgramByte();
 	console.log(hexWord(addr),":", hexByte(varType), "  ;");
-	switch(varType) {
+	switch(varType & TYPES.SCALAR) {
 		case TYPES.string: {
 			const strIdx= readProgramWord();
 			console.log(hexWord(addr),":", hexWord(strIdx), "  ;", strings[strIdx]);
@@ -56,6 +56,11 @@ function disasLine() {
 	console.log(hexWord(addr),":", hexByte(cmd), "       ;", cmdName);
 
 	switch(cmd) {
+		case CMDS.FUNCTION: {
+			let varIdx= readProgramWord();
+			console.log(hexWord(addr),":", hexWord(varIdx), "     ; ", getVarName(varIdx)+"()");
+			break;
+		}
 		case CMDS.END_FUNCTION: {
 			break;
 		}
