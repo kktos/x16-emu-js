@@ -16,6 +16,7 @@ const TYPES= {
 	fn: 5,
 	iterator: 6,
 	byte: 7,
+	local: 8,
 
 
 	END: 0x00,
@@ -28,7 +29,7 @@ const TYPES= {
 	FUNCTION: 0x20,
 	ARRAY: 0x40,
 	UNDECLARED: 0x80,
-}
+};
 
 const CMDS= {
 	REM: 0x00,
@@ -38,10 +39,15 @@ const CMDS= {
 	LET: 0x06,
 	SET: 0x07,
 	AS: 0x08,
-	WORD: 0x09,
-	BYTE: 0x0A,
 
 	INPUT: 0x10,
+
+	BYTE: 0x20,
+	WORD: 0x21,
+	INT: 0x22,
+	LONG: 0x23,
+	FLOAT: 0x24,
+	STRING: 0x25,
 
 	IF: 0x30,
 	THEN: 0x31,
@@ -58,8 +64,26 @@ const CMDS= {
 	FUNCTION: 0x53,
 	END_FUNCTION: 0x54,
 
+	"(": 0xE0,
+	")": 0xE1,
+	"$": 0xE2,
+	"=": 0xE3,
+	",": 0xE4,
+	";": 0xE5,
+	":": 0xE6,
+
 	END: 0xFF,
 
+};
+
+const TOKENS = {
+	LEFT_PARENT: CMDS["("],
+	RIGHT_PARENT: CMDS[")"],
+	DOLLAR: CMDS["$"],
+	EQUAL: CMDS["="],
+	COMMA: CMDS[","],
+	SEMICOLON: CMDS[";"],
+	COLON: CMDS[":"],
 };
 
 const OPERATORS= {
@@ -92,7 +116,9 @@ const ERRORS= {
 	DUPLICATE_NAME: 0xDAFE,
 	LINE_MISSING: 0xDADA,
 	UNKNOWN_STATEMENT: 0xDADE,
-	ILLEGAL_STATEMENT: 0xDEDE
+	ILLEGAL_STATEMENT: 0xDEDE,
+	NOT_ENOUGH_PARMS: 0xDEAF,
+	UNKNOWN_VARIABLE: 0xFEDE
 };
 
 const HEADER= {
@@ -109,8 +135,6 @@ const prgCode= {
 	idx: 0
 };
 
-const strings= [];
-
 const prgLines= {
 	buffer: new Uint8Array(255),
 	idx: 0
@@ -118,22 +142,22 @@ const prgLines= {
 
 const headers= new Uint8Array(12);
 
-let lexer= {
+let source= {
 	buffer: "",
 	idx: 0
 };
 
 export {
-	lexer,
+	source,
 	identiferChars,
 	numberChars,
 	ws,
 	headers,
 	prgLines,
-	strings,
 	prgCode,
 	ERRORS,
 	CMDS,
+	TOKENS,
 	FNS,
 	OPERATORS,
 	SIZE,

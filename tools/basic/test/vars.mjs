@@ -8,19 +8,22 @@ import { getArraySize } from "./arrays.mjs";
 // 2: int / string
 // x: float
 // x: iterator
-const VAR_RECORD_SIZE= 1 + 2 + 2;
+const VAR_RECORD_SIZE= 2 + 2 + 2;
 const varsBuffer= new Uint8Array(50*VAR_RECORD_SIZE+2);
 const FIELDS= {
 	TYPE: 0,
-	NAME: 1,
-	VALUE: 3
+	LEVEL: 1,
+	NAME: 2,
+	VALUE: 4
 };
 export const ITERATOR= {
-	VAR: 1,
-	INC: 3,
-	MAX: 6,
-	PTR: 8
+	VAR: 2,
+	INC: 4,
+	MAX: 8,
+	PTR: 10
 };
+
+global._VARS= varsBuffer;
 
 for(let idx=0; idx<varsBuffer.length; idx++)
 	varsBuffer[idx]= 0xFF;
@@ -64,49 +67,80 @@ function writeVarWord(idx, field, word) {
 // console.log(hexdump(varsBuffer, 2, readWord(0)*VAR_RECORD_SIZE+2, 5));
 }
 
-export function addVar(name, isArray= false, isDeclared= false) {
-	let varType;
-	switch(name[name.length-1]) {
-		case "$":
-			varType= TYPES.string;
-			break;
-		case "%":
-			varType= TYPES.int;
-			break;
-		default:
-			varType= TYPES.float;
-	}
-
+export function addVarNameIdx(nameIdx, level, varType, isArray= false, isDeclared= false) {
 	let count= readWord(0);
 	writeWord(0, count + 1);
 
-	const nameIdx= addString(name);
-
 	varType= varType | (isDeclared ? 0 : TYPES.UNDECLARED) | (isArray ? TYPES.ARRAY : 0)
 	writeVarByte(count, FIELDS.TYPE, varType);
+	writeVarByte(count, FIELDS.LEVEL, level);
 	writeVarWord(count, FIELDS.NAME, nameIdx);
 	writeVarWord(count, FIELDS.VALUE, 0);
 
 	return count;
 }
 
-export function declareVar(name, isArray) {
-	return addVar(name, isArray, true);
+export function addVar(name, level, isArray= false, isDeclared= false) {
+
+	const nameIdx= addString(name);
+	const varType= getTypeFromName(name);
+
+	return addVarNameIdx(nameIdx, level, varType, isArray, isDeclared);
+}
+
+export function declareVar(name, level, isArray) {
+	return addVar(name, level, isArray, true);
+}
+
+export function removeVarsForLevel(level) {
+	let count= readWord(0);
+	if(!count)
+		return -1;
+
+	let idx= count;
+
+	do {
+		idx--;
+		const type= getVarType(idx);
+		if(type == 0) {
+			continue;
+		}
+		const varLevel= getVarLevel(idx);
+		if(varLevel == level) {
+			setVarType(idx, 0);
+			count--;
+			continue;
+		}
+	} while(idx);
+
+	writeWord(0, count);
+
+	return count;
 }
 
 export function setVarDeclared(idx) {
 	writeVarByte(idx, FIELDS.TYPE, getVarType(idx) & (TYPES.UNDECLARED ^ 0xFF));
 }
 
-export function findVar(name) {
-	let idx= 0;
-	let count= readWord(0);
-	while(idx < count) {
-		if(name == getVarName(idx)) {
-			return idx;
+export function findVar(name, level= -1) {
+	let idx= readWord(0);
+	if(!idx)
+		return -1;
+
+	do {
+		idx--;
+		const type= getVarType(idx);
+		if((type == 6)||(type == 0)) {
+			continue;
 		}
-		idx++;
-	}
+
+		if((level != -1) && (level != getVarLevel(idx)))
+			continue;
+
+		if(name == getVarName(idx))
+			return idx;
+	} while(idx);
+
 	return -1;
 }
 
@@ -130,6 +164,25 @@ export function getVarType(idx) {
 	return readVarByte(idx, FIELDS.TYPE);
 }
 
+export function getVarLevel(idx) {
+	return readVarByte(idx, FIELDS.LEVEL);
+}
+
+export function getTypeFromName(name) {
+	let varType;
+	switch(name[name.length-1]) {
+		case "$":
+			varType= TYPES.string;
+			break;
+		case "%":
+			varType= TYPES.int;
+			break;
+		default:
+			varType= TYPES.float;
+	}
+	return varType;
+}
+
 export function setVarType(idx, type) {
 	return writeVarByte(idx, FIELDS.TYPE, getVarType(idx) & TYPES.FLAGS | type );
 }
@@ -151,12 +204,16 @@ export function addIteratorVar(idx) {
 	writeWord(0, count + 2);
 
 	writeVarByte(count, FIELDS.TYPE, TYPES.iterator);
+	writeVarByte(count, FIELDS.LEVEL, 0);
 	writeVarWord(count, FIELDS.NAME, idx); 	// ITERATOR.VAR
 	writeVarWord(count, FIELDS.VALUE, 0); 	// ITERATOR.INC
 
-	writeVarByte(count+1, FIELDS.TYPE, TYPES.iterator | 0x80);
+	writeVarByte(count+1, FIELDS.TYPE, 0x00);
 	writeVarWord(count+1, FIELDS.NAME, 0); 	// ITERATOR.MAX
 	writeVarWord(count+1, FIELDS.VALUE, 0); 	// ITERATOR.PTR
+
+	// console.log("************ addIteratorVar", getVarName(idx));
+	// dumpVars();
 
 	return count;
 }
@@ -184,17 +241,22 @@ export function findIteratorVar(varIdx) {
 
 export function dumpVars() {
 
-	let idx= 0;
-	let count= readWord(0);
+	const count= readWord(0);
 
 	console.log("count:", count);
-	console.log(hexdump(varsBuffer, 2, count*VAR_RECORD_SIZE+2, 5));
+	console.log(hexdump(varsBuffer, 2, count*VAR_RECORD_SIZE+2, VAR_RECORD_SIZE));
 
-	while(idx < count) {
-		const nameIdx= readVarWord(idx, FIELDS.NAME);
-		const name= getString(nameIdx);
+	let idx= count-1;
+	while(idx >= 0) {
 		let type= readVarByte(idx, FIELDS.TYPE);
+		if(!type) {
+			idx--;
+			continue;
+		}
+		const nameIdx= readVarWord(idx, FIELDS.NAME);
+		let name= getString(nameIdx);
 		let value= readVarWord(idx, FIELDS.VALUE);
+		let level= readVarByte(idx, FIELDS.LEVEL);
 
 		let arraySize;
 		const isArray= type & TYPES.ARRAY;
@@ -203,6 +265,7 @@ export function dumpVars() {
 			arraySize= getArraySize(value);
 		}
 		const isFunction= type & TYPES.FUNCTION;
+		const isDeclared= !(type & TYPES.UNDECLARED);
 
 		type&= TYPES.SCALAR;
 
@@ -213,23 +276,26 @@ export function dumpVars() {
 					break;
 				}
 				case TYPES.iterator: {
-					idx++;
-					const max= readVarWord(idx, FIELDS.NAME);
-					const ptr= readVarWord(idx, FIELDS.VALUE);
+					name= getVarName(nameIdx);
+					const max= readVarWord(idx+1, FIELDS.NAME);
+					const ptr= readVarWord(idx+1, FIELDS.VALUE);
 					value= `INC:${hexWord(value)} MAX:${hexWord(max)} PTR:${hexWord(ptr)}`;
 				}
 			}
 
 		console.log(
+			String(idx).padStart(2, "0"),
+			(level>0 ? "L" : "G")+hexByte(level),
 			name,
 			":",
 			EnumToName(TYPES, type)
 				+ (isArray ? "["+arraySize+"]" : "")
 				+ (isFunction ? "()" : "")				,
 			"=",
+			isDeclared ? "" : "undefined",
 			value);
 
-		idx++;
+		idx--;
 	}
 
 }

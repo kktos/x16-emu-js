@@ -7,12 +7,20 @@ import { dumpArrays } from "./arrays.mjs";1
 import { dumpStrings } from "./strings.mjs";1
 
 const src= `
-40 print test%()
-50 end
-100 function test%
+5 let parm_1%= 50
+6 print "parm_1% = ";parm_1%
+10 for i%=0 to 9
+40     print test%(i%)
+50 next i%
+55 let parm_1%= 60
+99 end
+100 function test%($parm_1: string)
+200     return $parm_1 * 2
 300 end function
 `;
 /*
+110 	let $this = 0
+
 10 print peek%(36)
 20 end
 30 function peek
@@ -98,6 +106,7 @@ const prg= parseSource(src);
 if(prg.err) {
 	console.error(`ERR ${hexWord(prg.err)} - ${EnumToName(ERRORS, prg.err)}`, prg.lineNum );
 	console.log(prg.lines);
+	dump();
 	process.exit();
 }
 
@@ -110,15 +119,19 @@ if(err) {
 	console.error(`ERR ${hexWord(err)} - ${EnumToName(ERRORS, err)}`, prg.lineNum );
 }
 
-console.log("");
-console.log("----------- VARS");
-console.log("");
-dumpVars();
-console.log("");
-console.log("----------- ARRAYS");
-console.log("");
-dumpArrays();
-console.log("");
-console.log("----------- STRINGS");
-console.log("");
-dumpStrings();
+dump();
+
+function dump() {
+	console.log("");
+	console.log("----------- VARS");
+	console.log("");
+	dumpVars();
+	console.log("");
+	console.log("----------- ARRAYS");
+	console.log("");
+	dumpArrays();
+	console.log("");
+	console.log("----------- STRINGS");
+	console.log("");
+	dumpStrings();
+}

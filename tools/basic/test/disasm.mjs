@@ -1,7 +1,6 @@
-import { hexWord, hexByte } from "./utils.mjs";
+import { hexWord, hexByte, EnumToName } from "./utils.mjs";
 import {
 	prgLines,
-	strings,
 	prgCode,
 	CMDS,
 	FNS,
@@ -58,7 +57,14 @@ function disasLine() {
 	switch(cmd) {
 		case CMDS.FUNCTION: {
 			let varIdx= readProgramWord();
-			console.log(hexWord(addr),":", hexWord(varIdx), "     ; ", getVarName(varIdx)+"()");
+			let parmCount= readProgramByte();
+			dumpWord(hexWord(varIdx), getVarName(varIdx)+"()");
+			dumpByte(parmCount, "parm count");
+			for(let idx= 1; idx<=parmCount; idx++) {
+				const parm= readProgramWord();
+				const type= readProgramByte();
+				dumpWordByte(parm, type, idx+"= " + getString(parm)+": "+EnumToName(TYPES, type));
+			}
 			break;
 		}
 		case CMDS.END_FUNCTION: {
@@ -160,6 +166,10 @@ function dumpByteWord(byte, word, cmt) {
 	console.log(hexWord(addr),":", hexByte(byte), hexWord(word), cmt ? `  ;${cmt}` : "");
 }
 
+function dumpWordByte(word, byte, cmt) {
+	console.log(hexWord(addr),":", hexWord(word), hexByte(byte), cmt ? `  ;${cmt}` : "");
+}
+
 function disasmExpr() {
 	while(true) {
 		const memaddr= prgCursor;
@@ -178,6 +188,10 @@ function disasmExpr() {
 				}
 				addr= memaddr;
 				dump2Bytes(itemType, fn, name);
+				if(fn == FNS.USER_DEF) {
+					const varIdx= readProgramWord();
+					dumpWord(varIdx, "fn: "+getVarName(varIdx));
+				}
 				break;
 			}
 			case TYPES.string: {
@@ -196,6 +210,12 @@ function disasmExpr() {
 				const v= readProgramWord();
 				addr= memaddr;
 				dumpByteWord(itemType, v, "var: "+getVarName(v));
+				break;
+			}
+			case TYPES.local: {
+				const strIdx= readProgramWord();
+				addr= memaddr;
+				dumpByteWord(itemType, strIdx, "var: $"+getString(strIdx));
 				break;
 			}
 			case TYPES.CLOSE: {

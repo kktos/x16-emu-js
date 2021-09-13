@@ -1,4 +1,4 @@
-import { strings, TYPES } from "./defs.mjs";
+import { TYPES } from "./defs.mjs";
 import { getArraySize, addArray, dumpArray, dumpArrays, setArrayItem, getArrayItem } from "./arrays.mjs";
 
 const MAX_STRINGS = 64;
@@ -38,11 +38,11 @@ export function getString(idx) {
 
 let tempStringsIdx;
 export function resetTempStrings() {
-	strings.length= tempStringsIdx;
+	// strings.length= tempStringsIdx;
 }
 
 export function setTempStrings() {
-	tempStringsIdx= strings.length;
+	// tempStringsIdx= strings.length;
 }
 
 export function dumpStrings() {

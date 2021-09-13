@@ -4,94 +4,12 @@ import {
 	OPERATORS,
 	SIZE,
 	TYPES,
-	identiferChars,
 	numberChars,
-	ws,
-	lexer,
-	prgCode
 } from "./defs.mjs";
 import { writeBufferProgram } from "./buffer.mjs";
-import { addVar, findVar, isVarArray } from "./vars.mjs";
+import { addVar, findVar, isVarArray, setVarFunction } from "./vars.mjs";
 import { addString } from "./strings.mjs";
-
-export function nextToken(lookahead= false) {
-	let currIdx= lexer.idx;
-
-	// skip whitespaces
-	while(currIdx<lexer.buffer.length && ws.includes(lexer.buffer[currIdx]))
-		currIdx++;
-
-	let idxSOT= currIdx;
-
-	// check for string
-	const isString= lexer.buffer[currIdx]=='"';
-
-	if(isString) {
-		while( ++currIdx<lexer.buffer.length && lexer.buffer[currIdx] != '"');
-	} else {
-		if(identiferChars.includes(lexer.buffer[currIdx++])) {
-			while(currIdx<lexer.buffer.length && identiferChars.includes(lexer.buffer[currIdx])) {
-				currIdx++;
-			}
-			if("$%".includes(lexer.buffer[currIdx]))
-				currIdx++
-		}
-	}
-
-	const token= lexer.buffer.slice(idxSOT, currIdx);
-
-	// console.log(lookahead ? "lookahead" : "nextToken",` <${token}> len:${token.length}`);
-
-	if(!lookahead)
-		lexer.idx= currIdx + (isString?1:0);
-
-	return token.length ? token : null;
-}
-
-// export function parseExpr0() {
-
-// 	function parseToken(tok) {
-// 		if(tok ==")") {
-// 			writeBufferProgram(SIZE.byte, TYPES.CLOSE);
-// 			return 0;
-// 		}
-
-// 		if(numberChars.includes(tok[0])) {
-// 			const num= parseInt(tok);
-// 			writeBufferProgram(SIZE.byte, TYPES.int);
-// 			writeBufferProgram(SIZE.word, num);
-// 			return 0;
-// 		}
-
-// 		if(FNS.hasOwnProperty(tok.toUpperCase())) {
-// 			const fn= FNS[tok.toUpperCase()];
-// 			writeBufferProgram(SIZE.byte, TYPES.fn);
-// 			writeBufferProgram(SIZE.byte, fn);
-// 			if(fn >= 100 && nextToken() != "(")
-// 				return ERRORS.syntax;
-// 			return 0;
-// 		}
-
-// 		const v= findVar(tok);
-// 		if(v>=0) {
-// 			writeBufferProgram(SIZE.byte, TYPES.var);
-// 			writeBufferProgram(SIZE.word, v);
-// 			return 0;
-// 		}
-
-// 		return ERRORS.syntax;
-// 	}
-
-// 	let tok;
-// 	while(tok= nextToken()) {
-// 		const err= parseToken(tok);
-// 		if(err)
-// 			return err;
-// 	}
-// 	writeBufferProgram(SIZE.byte, TYPES.END);
-
-// 	return 0;
-// }
+import { lexer } from "./lexer.mjs";
 
 export function parseExpr() {
 	const err= parseCmp();
@@ -107,10 +25,10 @@ function parseCmp() {
 		return err;
 
 	while(true) {
-		const tok= nextToken(true);
+		const tok= lexer(true);
 		switch(tok) {
 			case ">": {
-				nextToken();
+				lexer();
 
 				const err= parseAdd();
 				if(err)
@@ -122,7 +40,7 @@ function parseCmp() {
 				break;
 			}
 			case "<": {
-				nextToken();
+				lexer();
 
 				const err= parseAdd();
 				if(err)
@@ -134,7 +52,7 @@ function parseCmp() {
 				break;
 			}
 			case "=": {
-				nextToken();
+				lexer();
 
 				const err= parseAdd();
 				if(err)
@@ -158,10 +76,10 @@ function parseAdd() {
 		return err;
 
 	while(true) {
-		const tok= nextToken(true);
+		const tok= lexer(true);
 		switch(tok) {
 			case "+": {
-				nextToken();
+				lexer();
 
 				const err= parseAdd();
 				if(err)
@@ -173,7 +91,7 @@ function parseAdd() {
 				break;
 			}
 			case "-": {
-				nextToken();
+				lexer();
 
 				const err= parseAdd();
 				if(err)
@@ -197,10 +115,10 @@ function parseProduct() {
 		return err;
 
 	while(true) {
-		const tok= nextToken(true);
+		const tok= lexer(true);
 		switch(tok) {
 			case "*": {
-				nextToken();
+				lexer();
 
 				const err= parseTerm();
 				if(err)
@@ -211,7 +129,7 @@ function parseProduct() {
 				break;
 			}
 			case "/": {
-				nextToken();
+				lexer();
 
 				const err= parseTerm();
 				if(err)
@@ -229,14 +147,14 @@ function parseProduct() {
 }
 
 function parseTerm() {
-	const tok= nextToken(true);
+	const tok= lexer(true);
 	if(!tok)
 		return ERRORS.syntax;
 
 	if(tok == ")")
 		return;
 
-	nextToken();
+	lexer();
 
 	if(numberChars.includes(tok[0])) {
 		const num= parseInt(tok);
@@ -257,7 +175,7 @@ function parseTerm() {
 		if(err)
 			return err;
 
-		if(nextToken() != ")")
+		if(lexer() != ")")
 			return ERRORS.syntax;
 
 		return 0;
@@ -265,14 +183,14 @@ function parseTerm() {
 
 	if(FNS.hasOwnProperty(tok.toUpperCase())) {
 		const fn= FNS[tok.toUpperCase()];
-		if(nextToken() != "(")
+		if(lexer() != "(")
 			return ERRORS.syntax;
 
 		const err= parseExpr();
 		if(err)
 			return err;
 
-		if(nextToken() != ")")
+		if(lexer() != ")")
 			return ERRORS.syntax;
 
 		writeBufferProgram(SIZE.byte, TYPES.fn);
@@ -280,22 +198,50 @@ function parseTerm() {
 		return 0;
 	}
 
-	const isFnCall= nextToken(true) == "(";
+	if(tok == '$') {
+		const varName= lexer();
+		const nameIdx= addString(varName);
+		writeBufferProgram(SIZE.byte, TYPES.local);
+		writeBufferProgram(SIZE.word, nameIdx);
+		return 0;
+	}
+
+	const isFnCall= lexer(true) == "(";
 	let varIdx= findVar(tok);
-	if(varIdx<0)
-		varIdx= addVar(tok);
+	if(varIdx<0) {
+		varIdx= addVar(tok, 0);
+		if(isFnCall)
+			setVarFunction(varIdx);
+	}
 
-	writeBufferProgram(SIZE.byte, TYPES.var);
-	writeBufferProgram(SIZE.word, varIdx);
-
-	if(isVarArray(varIdx)) {
-		nextToken();
+	if(isFnCall) {
+		lexer();
 
 		const err= parseExpr();
 		if(err)
 			return err;
 
-		if(nextToken() != ")")
+		if(lexer() != ")")
+			return ERRORS.syntax;
+
+		writeBufferProgram(SIZE.byte, TYPES.fn);
+		writeBufferProgram(SIZE.byte, FNS.USER_DEF);
+		writeBufferProgram(SIZE.word, varIdx);
+
+		return 0;
+	}
+
+	writeBufferProgram(SIZE.byte, TYPES.var);
+	writeBufferProgram(SIZE.word, varIdx);
+
+	if(isVarArray(varIdx)) {
+		lexer();
+
+		const err= parseExpr();
+		if(err)
+			return err;
+
+		if(lexer() != ")")
 			return ERRORS.syntax;
 
 		writeBufferProgram(SIZE.byte, TYPES.fn);
@@ -304,31 +250,5 @@ function parseTerm() {
 		// writeBufferProgram(SIZE.byte, TYPES.END);
 	}
 
-
-	// if(nextToken(true) == "(") {
-	// 	nextToken();
-
-	// 	const err= parseExpr();
-	// 	if(err)
-	// 		return err;
-
-	// 	if(nextToken() != ")")
-	// 		return ERRORS.syntax;
-
-	// 	writeBufferProgram(SIZE.byte, TYPES.fn);
-	// 	writeBufferProgram(SIZE.byte, FNS.USER_DEF);
-	// 	return 0;
-	// }
-
-	// if(identiferChars.includes(tok[0])) {
-	// 	let varIdx= findVar(tok);
-	// 	if(varIdx<0) {
-	// 		varIdx= addVar(tok)
-	// 	}
-	// 	writeBufferProgram(SIZE.byte, TYPES.var);
-	// 	writeBufferProgram(SIZE.word, varIdx);
-	// }
-
 	return 0;
-	// return ERRORS.syntax;
 }

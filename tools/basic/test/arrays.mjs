@@ -6,6 +6,9 @@ const ARRAY_RECORD_SIZE= 2 + 2;
 const arrayList= new Uint8Array(2 + 20 * ARRAY_RECORD_SIZE);
 const arrayData= new Uint8Array(2 + 20 * 255);
 
+global._ARRAYLIST= arrayList;
+global._ARRAYDATA= arrayData;
+
 for(let idx=0; idx<arrayList.length; idx++)
 	arrayList[idx]= 0xFF;
 

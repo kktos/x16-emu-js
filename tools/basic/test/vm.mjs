@@ -4,11 +4,12 @@ import { hexWord, hexByte } from "./utils.mjs";
 import { prgCode, ERRORS, HEADER } from "./defs.mjs";
 import {
 	setVar, setIteratorVar, getIteratorVar, ITERATOR, getVarType, getVar,
-	isVarFunction, isVarDeclared, getVarName
 } from "./vars.mjs";
 import { setArrayItem, getArrayItem } from "./arrays.mjs";
 import { OPERATORS, FNS } from "./defs.mjs";
 import { addString, setTempStrings, resetTempStrings, getString } from "./strings.mjs";
+import { addVarNameIdx, removeVarsForLevel } from "./vars.mjs";
+import { findVar } from "./vars.mjs";
 
 let expr= {
 	type: 0,
@@ -32,13 +33,16 @@ export function run(prg) {
 	context.lineIdx= readBufferHeader(HEADER.START);
 	context.level= 0;
 	context.returnExpr= null;
+	context.exprStack= [];
 
 	setTempStrings(context.lineIdx);
 
-	return execStatements(context);
+	const err= execStatements();
+	prg.lineNum= context.lineNum;
+	return err;
 }
 
-function execStatements(context) {
+function execStatements() {
 	let lineNum;
 	let err;
 
@@ -65,6 +69,30 @@ function execStatements(context) {
 				// function could be run only on call (level>0)
 				if(!context.level)
 					return ERRORS.ILLEGAL_STATEMENT;
+
+				// console.log("FUNCTION", context.exprStack);
+
+				// skip function var
+				readBuffer(program, SIZE.word);
+
+				let parmCount= readBuffer(program, SIZE.byte);
+
+				// console.log("FUNCTION parmCount", parmCount);
+
+				if(context.exprStack.length < parmCount) {
+					return ERRORS.NOT_ENOUGH_PARMS;
+				}
+
+				while(parmCount--) {
+					const nameIdx= readBuffer(program, SIZE.word);
+					const varType= readBuffer(program, SIZE.byte);
+					const expr= context.exprStack.pop();
+					if(expr.type != varType)
+						return ERRORS.TYPE_MISMATCH;
+					const varIdx= addVarNameIdx(nameIdx, context.level, varType, false, true);
+					setVar(varIdx, expr.value);
+				}
+
 				break;
 			}
 
@@ -78,6 +106,9 @@ function execStatements(context) {
 					return err;
 
 				context.returnExpr= expr;
+
+				removeVarsForLevel(context.level);
+
 				return;
 			}
 
@@ -309,7 +340,28 @@ function assignArrayItem() {
 }
 
 function evalExpr() {
-	const exprStack= [];
+
+	function getVarValue(varIdx) {
+		expr.type= getVarType(varIdx);// & 0x3F;
+		switch(expr.type) {
+			case TYPES.int: {
+				expr.value= getVar(varIdx);
+				break;
+			}
+			case TYPES.float: {
+				expr.value= getVar(varIdx);
+				break;
+			}
+			case TYPES.string: {
+				expr.value= getVar(varIdx);
+				break;
+			}
+			default: {
+				expr.value= getVar(varIdx);
+				break;
+			}
+		}
+	}
 
 	while(true) {
 
@@ -319,57 +371,18 @@ function evalExpr() {
 
 		switch(itemType) {
 
+			case TYPES.local: {
+				const nameIdx= readBuffer(program, SIZE.word);
+				const varIdx= findVar(getString(nameIdx), context.level);
+				if(varIdx<0)
+					return ERRORS.UNKNOWN_VARIABLE;
+				getVarValue(varIdx);
+				break;
+			}
+
 			case TYPES.var: {
 				const varIdx= readBuffer(program, SIZE.word);
-
-				// console.log("evalExpr", getVarName(varIdx), hexWord(getVarType(varIdx)));
-
-				const isDeclared= isVarDeclared(varIdx);
-				const isFunction= isVarFunction(varIdx);
-
-				if(isFunction) {
-					if(!isDeclared)
-						return ERRORS.UNKNOWN_FUNCTION;
-
-					const lineIdx= context.lineIdx;
-					const prgIdx= program.idx;
-
-					context.level++;
-					context.lineIdx= getVar(varIdx);
-
-					const err= execStatements(context);
-					if(err)
-						return err;
-
-					context.level--;
-					program.idx= prgIdx;
-					context.lineIdx= lineIdx;
-
-					expr= context.returnExpr;
-
-					break;
-				}
-
-				expr.type= getVarType(varIdx);// & 0x3F;
-				switch(expr.type) {
-					case TYPES.int: {
-						expr.value= getVar(varIdx);
-						break;
-					}
-					case TYPES.float: {
-						expr.value= getVar(varIdx);
-						break;
-					}
-					case TYPES.string: {
-						expr.value= getVar(varIdx);
-						break;
-					}
-					default: {
-						expr.value= getVar(varIdx);
-						break;
-					}
-				}
-
+				getVarValue(varIdx);
 				break;
 			}
 
@@ -389,65 +402,88 @@ function evalExpr() {
 
 			case TYPES.fn: {
 				const fnIdx= readBuffer(program, SIZE.byte);
-				const err= execFn(fnIdx, exprStack);
+				const err= execFn(fnIdx);
 				if(err)
 					return err;
 				continue;
 			}
 
 		}
-		exprStack.push({type: expr.type, value: expr.value});
+		context.exprStack.push({type: expr.type, value: expr.value});
 	}
 
-	// console.log("\n---- expr", exprStack);
-	expr= exprStack.length ? exprStack.pop() : expr;
+	expr= context.exprStack.length ? context.exprStack.pop() : expr;
+	// console.log("\n---- expr", expr);
 	return 0;
 }
 
-function execFn(fn, exprStack) {
+function execFn(fn) {
 
 	switch(fn) {
 		case OPERATORS.ADD: {
-			const op1= exprStack.pop();
-			const op2= exprStack.pop();
-			exprStack.push({type: op1.type, value: op1.value + op2.value});
+			const op1= context.exprStack.pop();
+			const op2= context.exprStack.pop();
+			context.exprStack.push({type: op1.type, value: op1.value + op2.value});
 			break;
 		}
 		case OPERATORS.SUB: {
-			const op1= exprStack.pop();
-			const op2= exprStack.pop();
-			exprStack.push({type: op1.type, value: op2.value - op1.value});
+			const op1= context.exprStack.pop();
+			const op2= context.exprStack.pop();
+			context.exprStack.push({type: op1.type, value: op2.value - op1.value});
 			break;
 		}
 		case OPERATORS.MULT: {
-			const op1= exprStack.pop();
-			const op2= exprStack.pop();
-			exprStack.push({type: op1.type, value: op1.value * op2.value});
+			const op1= context.exprStack.pop();
+			const op2= context.exprStack.pop();
+			context.exprStack.push({type: op1.type, value: op1.value * op2.value});
 			break;
 		}
 		case OPERATORS.GT: {
-			const op1= exprStack.pop();
-			const op2= exprStack.pop();
-			exprStack.push({type: op1.type, value: op2.value > op1.value});
+			const op1= context.exprStack.pop();
+			const op2= context.exprStack.pop();
+			context.exprStack.push({type: op1.type, value: op2.value > op1.value});
 			break;
 		}
 		case FNS.CHR$: {
-			const op1= exprStack.pop();
+			const op1= context.exprStack.pop();
 			op1.type= TYPES.string;
 			op1.value= addString(String.fromCharCode(op1.value));
-			exprStack.push(op1);
+			context.exprStack.push(op1);
 			break;
 		}
 		case FNS.GET_ITEM: {
-			const op1= exprStack.pop();
-			const arr= exprStack.pop();
+			const op1= context.exprStack.pop();
+			const arr= context.exprStack.pop();
 
 			if((op1.type != TYPES.int) && !(arr.type & TYPES.ARRAY))
 				return ERRORS.TYPE_MISMATCH;
 
 			arr.type= arr.type & 0x3F;
 			arr.value= getArrayItem(arr.type, arr.value, op1.value);
-			exprStack.push(arr);
+			context.exprStack.push(arr);
+			break;
+		}
+		case FNS.USER_DEF: {
+			const varIdx= readBuffer(program, SIZE.word);
+
+			// const op1= context.exprStack.pop();
+
+			const lineIdx= context.lineIdx;
+			const prgIdx= program.idx;
+
+			context.level++;
+			context.lineIdx= getVar(varIdx);
+
+			const err= execStatements();
+			if(err)
+				return err;
+
+			context.level--;
+			program.idx= prgIdx;
+			context.lineIdx= lineIdx;
+
+			context.exprStack.push(context.returnExpr);
+
 			break;
 		}
 		default:

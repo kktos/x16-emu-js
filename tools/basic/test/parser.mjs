@@ -1,23 +1,24 @@
-import { hexWord, hexdump } from "./utils.mjs";
+import { hexWord, hexByte, hexdump } from "./utils.mjs";
 import { disasmPrg, dumpLines } from "./disasm.mjs";
 import {
 	headers,
 	prgLines,
-	strings,
 	prgCode,
 	ERRORS,
 	CMDS,
+	TOKENS,
 	SIZE,
 	TYPES,
-	lexer,
 	HEADER,
+	source
 } from "./defs.mjs";
-import { parseExpr, nextToken } from "./expr.mjs";
+import { parseExpr } from "./expr.mjs";
+import { lexer, tokenizer } from "./lexer.mjs";
 import { writeBufferProgram, writeBufferHeader, writeBufferLine, readBufferHeader } from "./buffer.mjs";
 import { addVar, declareVar, setVarDeclared, findVar, addIteratorVar, findIteratorVar, dumpVars } from "./vars.mjs";
-import { addString } from "./strings.mjs";
+import { addString, dumpStrings } from "./strings.mjs";
 import { addArray, dumpArrays } from "./arrays.mjs";
-import { getVarType, setVarType, setVarFunction, setVar, isVarDeclared } from "./vars.mjs";
+import { getVarType, setVarType, setVarFunction, setVar, isVarDeclared, getTypeFromName } from "./vars.mjs";
 
 let currentLineNum;
 
@@ -29,15 +30,15 @@ export function parseSource(src) {
 
 	// version
 	writeBufferHeader(HEADER.VERSION, 0x0001);
-	// start lexer.buffer idx
+	// start source.buffer idx
 	// writeBufferHeader(HEADER.START, 0xFFFF);
 
 	for(let idx=0; idx<lines.length; idx++) {
-		lexer.idx= 0;
-		lexer.buffer= lines[idx];
+		source.idx= 0;
+		source.buffer= lines[idx];
 		const err= parseLine();
 		if(err) {
-			// console.error("ERR", hexWord(err), ` at ${currentLineNum} : <${lexer.buffer.slice(lexer.idx)}>`);
+			// console.error("ERR", hexWord(err), ` at ${currentLineNum} : <${source.buffer.slice(source.idx)}>`);
 			// dump(lines);
 			return {
 				err,
@@ -56,7 +57,6 @@ export function parseSource(src) {
 		headers: headers,
 		lines: prgLines,
 		code: prgCode,
-		strings: strings,
 	}
 
 }
@@ -82,7 +82,7 @@ function dump(lines) {
 	console.log("");
 	console.log("----------- STRINGS");
 	console.log("");
-	console.log(strings);
+	dumpStrings();
 
 	console.log("");
 	console.log("----------- VARS");
@@ -115,7 +115,7 @@ function parseGoto() {
 function parseLine() {
 	let lineIdx;
 
-	const tok= nextToken();
+	const tok= lexer();
 	if(tok == null)
 		return;
 
@@ -123,7 +123,7 @@ function parseLine() {
 	if(isNaN(currentLineNum))
 		return ERRORS.SYNTAX_ERROR;
 
-	const cmd= parseCmd();
+	const cmd= tokenizer();
 	if(cmd == -1)
 		return ERRORS.SYNTAX_ERROR;
 
@@ -132,13 +132,16 @@ function parseLine() {
 
 	switch(cmd) {
 		case CMDS.LET: {
-			const varName= nextToken();
-			let tok= nextToken();
-			const isArray= tok == "(";
+			const varName= lexer();
+			let tok= tokenizer();
+			const isArray= tok == TOKENS.LEFT_PARENT;
 
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= isArray ? addVar(varName, true) : declareVar(varName);
+				varIdx= isArray ?
+					addVar(varName, 0, true)
+					:
+					declareVar(varName, 0);
 			} else
 				setVarDeclared(varIdx);
 
@@ -156,13 +159,13 @@ function parseLine() {
 
 				writeBufferProgram(SIZE.byte, TYPES.END);
 
-				if(nextToken() != ")")
+				if(tokenizer() != TOKENS.RIGHT_PARENT)
 					return ERRORS.SYNTAX_ERROR;
 
-				tok= nextToken();
+				tok= tokenizer();
 			}
 
-			if(tok != "=")
+			if(tok != TOKENS.EQUAL)
 				return ERRORS.SYNTAX_ERROR;
 
 			const err= parseExpr();
@@ -174,11 +177,11 @@ function parseLine() {
 		}
 
 		case CMDS.DIM: {
-			const varName= nextToken();
+			const varName= lexer();
 
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= declareVar(varName, true);
+				varIdx= declareVar(varName, context.level, true);
 			} else {
 				const isArray= getVarType(varIdx) & TYPES.ARRAY;
 				if(!isArray)
@@ -192,22 +195,22 @@ function parseLine() {
 			}
 			writeBufferProgram(SIZE.word, varIdx);
 
-			if(nextToken() != "(")
+			if(lexer() != "(")
 				return ERRORS.SYNTAX_ERROR;
 
 			const dim= parseNum();
 			if(isNaN(dim))
 				return ERRORS.SYNTAX_ERROR;
 
-			if(nextToken() != ")")
+			if(lexer() != ")")
 				return ERRORS.SYNTAX_ERROR;
 
-			if(parseCmd(true) == CMDS.AS) {
+			if(tokenizer(true) == CMDS.AS) {
 				if(getVarType(varIdx) & 0x3F != TYPES.int)
 					return ERRORS.TYPE_MISMATCH;
 
-				nextToken();
-				const size= parseCmd();
+				lexer();
+				const size= tokenizer();
 				switch(size) {
 					case CMDS.BYTE: {
 						setVarType(varIdx, TYPES.byte);
@@ -241,15 +244,15 @@ function parseLine() {
 		}
 
 		case CMDS.FOR: {
-			const varName= nextToken();
+			const varName= lexer();
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= declareVar(varName);
+				varIdx= declareVar(varName, 0);
 			}
 			let iteratorIdx= addIteratorVar(varIdx);
 			writeBufferProgram(SIZE.word, iteratorIdx);
 
-			if(nextToken() != "=")
+			if(lexer() != "=")
 				return ERRORS.SYNTAX_ERROR;
 
 			let err= parseExpr();
@@ -257,7 +260,7 @@ function parseLine() {
 				return err;
 			writeBufferProgram(SIZE.byte, TYPES.END);
 
-			if(parseCmd() != CMDS.TO)
+			if(tokenizer() != CMDS.TO)
 				return ERRORS.SYNTAX_ERROR;
 
 			err= parseExpr();
@@ -265,8 +268,8 @@ function parseLine() {
 				return err;
 			writeBufferProgram(SIZE.byte, TYPES.END);
 
-			if(parseCmd(true) == CMDS.STEP) {
-				nextToken();
+			if(tokenizer(true) == CMDS.STEP) {
+				lexer();
 				err= parseExpr();
 				if(err)
 					return err;
@@ -280,13 +283,13 @@ function parseLine() {
 		}
 
 		case CMDS.NEXT: {
-			const varName= nextToken();
+			const varName= lexer();
 			if(!varName)
 				return ERRORS.SYNTAX_ERROR;
 
 			let varIdx= findVar(varName);
 			if(varIdx<0)
-				varIdx= addVar(varName);
+				varIdx= addVar(varName, context.level);
 
 			let iteratorIdx= findIteratorVar(varIdx);
 			if(iteratorIdx<0)
@@ -304,14 +307,14 @@ function parseLine() {
 					return err;
 				writeBufferProgram(SIZE.byte, TYPES.END);
 
-				tok= nextToken();
+				tok= tokenizer();
 				hasMore= false;
 				switch(tok) {
-					case ",":
+					case TOKENS.COMMA:
 						hasMore= true;
 						writeBufferProgram(SIZE.byte, 0x09);
 						break;
-					case ";":
+					case TOKENS.SEMICOLON:
 						hasMore= true;
 						writeBufferProgram(SIZE.byte, 0x0A);
 						break;
@@ -328,7 +331,7 @@ function parseLine() {
 			if(err)
 				return err;
 
-			if(parseCmd() != CMDS.THEN)
+			if(tokenizer() != CMDS.THEN)
 				return ERRORS.SYNTAX_ERROR;
 
 			writeBufferProgram(SIZE.byte, TYPES.END);
@@ -339,10 +342,10 @@ function parseLine() {
 		}
 
 		case CMDS.END: {
-			let cmd= parseCmd(true);
+			let cmd= tokenizer(true);
 			switch(cmd) {
 				case CMDS.FUNCTION: {
-					nextToken();
+					lexer();
 					prgCode.idx--;
 					writeBufferProgram(SIZE.byte, CMDS.END_FUNCTION);
 					break;
@@ -352,8 +355,8 @@ function parseLine() {
 		}
 
 		case CMDS.FUNCTION: {
-			const name= nextToken();
-			let varIdx= findVar(name);
+			let name= lexer();
+			const varIdx= findVar(name);
 			if(varIdx>=0) {
 				if(isVarDeclared(varIdx))
 					return ERRORS.DUPLICATE_NAME;
@@ -361,8 +364,65 @@ function parseLine() {
 				setVarDeclared(varIdx);
 				setVarFunction(varIdx);
 				setVar(varIdx, lineIdx);
-			}
-			writeBufferProgram(SIZE.word, varIdx);
+
+				writeBufferProgram(SIZE.word, varIdx);
+
+				const parmCountPos= prgCode.idx;
+				writeBufferProgram(SIZE.byte, 0);
+
+				if(tokenizer(true) == TOKENS.LEFT_PARENT) {
+					let done= false;
+					let parmCount= 0;
+					while(!done) {
+						lexer();
+
+						if(tokenizer() != TOKENS.DOLLAR)
+							return ERRORS.SYNTAX_ERROR;
+
+						name= lexer();
+						let nameIdx= addString(name);
+						writeBufferProgram(SIZE.word, nameIdx);
+						parmCount++;
+
+						let varType= getTypeFromName(name);
+						let tok= tokenizer(true);
+						if((tok == CMDS.AS) || (tok == TOKENS.COLON)) {
+							lexer();
+							tok= tokenizer();
+							switch(tok) {
+								case CMDS.INT:
+								case CMDS.WORD:
+									varType= TYPES.int;
+									break;
+								case CMDS.BYTE:
+									varType= TYPES.byte;
+									break;
+								case CMDS.STRING:
+									varType= TYPES.string;
+									break;
+								default:
+									return ERRORS.SYNTAX_ERROR;
+							}
+							tok= tokenizer(true);
+						}
+						writeBufferProgram(SIZE.byte, varType);
+
+						switch(tok) {
+							case TOKENS.COMMA:
+								continue;
+							case TOKENS.RIGHT_PARENT:
+								done= true;
+								break;
+						}
+					}
+					lexer();
+					prgCode.buffer[parmCountPos]= parmCount;
+				}
+				//return ERRORS.SYNTAX_ERROR;
+
+			} else
+				throw new Error("NOT YET IMPLEMENTED !");
+
 			break;
 		}
 
@@ -386,22 +446,12 @@ function parseLine() {
 }
 
 function parseNum(tok) {
-	const intStr= tok != undefined ? tok : nextToken();
+	const intStr= tok != undefined ? tok : lexer();
 	return parseInt(intStr);
 }
 
-function parseCmd(lookahead= false) {
-	const cmdStr= nextToken(lookahead);
-	if(!cmdStr)
-		return -1;
-
-	if(CMDS.hasOwnProperty(cmdStr.toUpperCase()))
-		return CMDS[cmdStr.toUpperCase()];
-	return -1;
-}
-
 function parseString() {
-	return lexer.buffer.slice(lexer.idx);
+	return source.buffer.slice(source.idx);
 }
 
 function addPrgLine(lineNum, offset) {
@@ -461,14 +511,14 @@ function findPrgLine(lineNum) {
 function parseVar(tok) {
 	let varIdx= findVar(tok);
 	if(varIdx<0) {
-		varIdx= addVar(tok)
+		varIdx= addVar(tok, context.level)
 	}
 	writeBufferProgram(SIZE.word, varIdx);
 	return varIdx;
 }
 
 function parseParms() {
-	let tok= nextToken();
+	let tok= lexer();
 
 	if(!tok)
 		return ERRORS.SYNTAX_ERROR;
