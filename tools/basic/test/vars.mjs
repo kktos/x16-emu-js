@@ -1,5 +1,5 @@
 import { TYPES } from "./defs.mjs";
-import { addString, getString, dumpStrings } from "./strings.mjs";
+import { addString, getString } from "./strings.mjs";
 import { hexByte, hexWord, hexdump, EnumToName } from "./utils.mjs";
 import { getArraySize } from "./arrays.mjs";
 
@@ -69,14 +69,23 @@ function writeVarWord(idx, field, word) {
 
 export function addVarNameIdx(nameIdx, level, varType, isArray= false, isDeclared= false) {
 	let count= readWord(0);
-	writeWord(0, count + 1);
+	let slotCount= 1;
 
 	varType= varType | (isDeclared ? 0 : TYPES.UNDECLARED) | (isArray ? TYPES.ARRAY : 0)
 	writeVarByte(count, FIELDS.TYPE, varType);
 	writeVarByte(count, FIELDS.LEVEL, level);
 	writeVarWord(count, FIELDS.NAME, nameIdx);
-	writeVarWord(count, FIELDS.VALUE, 0);
+	writeVarWord(count, FIELDS.VALUE, 0xFFFF);
 
+	if(!isArray && varType == TYPES.float) {
+		slotCount++;
+		writeVarByte(count+1, FIELDS.TYPE, 0x00);
+		writeVarByte(count+1, FIELDS.LEVEL, 0xFF);
+		writeVarWord(count+1, FIELDS.NAME, 0);
+		writeVarWord(count+1, FIELDS.VALUE, 0);
+	}
+
+	writeWord(0, count + slotCount);
 	return count;
 }
 
@@ -149,10 +158,29 @@ export function setVarFunction(idx) {
 }
 
 export function setVar(idx, value) {
+	const varType= getVarType(idx);
+	if(varType == TYPES.float) {
+		const buffer = new Uint8Array(4);
+		const view = new DataView(buffer.buffer);
+		view.setFloat32(0, value);
+		for(let fidx= 0; fidx<4; fidx++)
+			writeVarByte(idx+1, FIELDS.NAME+fidx, view.getUint8(fidx));
+		return;
+	}
+
 	writeVarWord(idx, FIELDS.VALUE, value);
 }
 
 export function getVar(idx) {
+	const varType= getVarType(idx);
+	if(varType == TYPES.float) {
+		const buffer = new Uint8Array(4);
+		const view = new DataView(buffer.buffer);
+		for(let fidx= 0; fidx<4; fidx++)
+			view.setUint8(fidx, readVarByte(idx+1, FIELDS.NAME+fidx));
+		return view.getFloat32(0);
+	}
+
 	return readVarWord(idx, FIELDS.VALUE);
 }
 
@@ -280,6 +308,14 @@ export function dumpVars() {
 					const max= readVarWord(idx+1, FIELDS.NAME);
 					const ptr= readVarWord(idx+1, FIELDS.VALUE);
 					value= `INC:${hexWord(value)} MAX:${hexWord(max)} PTR:${hexWord(ptr)}`;
+				}
+				case TYPES.float: {
+					const buffer= new Uint8Array(4);
+					const view= new DataView(buffer.buffer);
+					for(let idx= 0;idx<4;idx++) {
+						view.setInt8(idx, readVarByte(idx+1, FIELDS.NAME + idx));
+					}
+					value= view.getFloat32(0);
 				}
 			}
 

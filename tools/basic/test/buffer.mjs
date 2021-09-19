@@ -49,11 +49,21 @@ function readBuffer(p, size, lookahead= false) {
 				p.idx++;
 			return value;
 		}
-		case SIZE.word:
+		case SIZE.word: {
 			const value= (p.buffer[p.idx] & 0xff) | (p.buffer[p.idx+1] << 8);
 			if(!lookahead)
 				p.idx+= 2;
 			return value;
+		}
+		case SIZE.long: {
+			const value= (p.buffer[p.idx] & 0xff)
+						| (p.buffer[p.idx+1] << 8)
+						| (p.buffer[p.idx+1] << 16)
+						| (p.buffer[p.idx+1] << 24);
+			if(!lookahead)
+				p.idx+= 4;
+			return value;
+		}
 	}
 }
 

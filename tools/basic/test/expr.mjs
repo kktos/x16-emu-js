@@ -4,12 +4,12 @@ import {
 	OPERATORS,
 	SIZE,
 	TYPES,
-	numberChars,
+	TOKENS
 } from "./defs.mjs";
 import { writeBufferProgram } from "./buffer.mjs";
 import { addVar, findVar, isVarArray, setVarFunction } from "./vars.mjs";
 import { addString } from "./strings.mjs";
-import { lexer } from "./lexer.mjs";
+import { isIdentifer, isString, isNumber, lexer, advance, tokenizer, lexeme } from "./lexer.mjs";
 
 export function parseExpr() {
 	const err= parseCmp();
@@ -147,50 +147,82 @@ function parseProduct() {
 }
 
 function parseTerm() {
-	const tok= lexer(true);
-	if(!tok)
+	const tok= tokenizer(true);
+	if(!lexeme)
 		return ERRORS.syntax;
 
-	if(tok == ")")
-		return;
+	switch(tok) {
 
-	lexer();
+		case TOKENS._INT: {
+			advance();
+			const num= parseInt(lexeme);
+			writeBufferProgram(SIZE.byte, TYPES.int);
+			writeBufferProgram(SIZE.word, num);
+			return 0;
+		}
 
-	if(numberChars.includes(tok[0])) {
-		const num= parseInt(tok);
-		writeBufferProgram(SIZE.byte, TYPES.int);
-		writeBufferProgram(SIZE.word, num);
-		return 0;
+		case TOKENS._FLOAT: {
+			advance();
+			const num= parseFloat(lexeme);
+			const buffer = new Uint8Array(4);
+			const view = new DataView(buffer.buffer);
+			view.setFloat32(0, num);
+			writeBufferProgram(SIZE.byte, TYPES.float);
+			for(let idx= 0; idx<4; idx++) {
+				writeBufferProgram(SIZE.byte, view.getUint8(idx));
+			}
+			return 0;
+		}
+
+		case TOKENS._STRING: {
+			advance();
+			writeBufferProgram(SIZE.byte, TYPES.string);
+			const idx= addString(lexeme.slice(1));
+			writeBufferProgram(SIZE.word, idx);
+			return 0;
+		}
+
+		case TOKENS.RIGHT_PARENT: {
+			return;
+		}
+
+		case TOKENS.LEFT_PARENT: {
+			advance();
+			const err= parseExpr();
+			if(err)
+				return err;
+
+			if(tokenizer() != TOKENS.RIGHT_PARENT)
+				return ERRORS.syntax;
+
+			return 0;
+		}
+
+		case TOKENS.DOLLAR: {
+			advance();
+			const varName= lexer();
+			const nameIdx= addString(varName);
+			writeBufferProgram(SIZE.byte, TYPES.local);
+			writeBufferProgram(SIZE.word, nameIdx);
+			return 0;
+		}
 	}
 
-	if(tok[0] == '"') {
-		writeBufferProgram(SIZE.byte, TYPES.string);
-		const idx= addString(tok.slice(1));
-		writeBufferProgram(SIZE.word, idx);
-		return 0;
-	}
+	if(!isIdentifer)
+		return ERRORS.syntax;
 
-	if(tok == '(') {
+	advance();
+
+	if(FNS.hasOwnProperty(lexeme.toUpperCase())) {
+		const fn= FNS[lexeme.toUpperCase()];
+		if(tokenizer() != TOKENS.LEFT_PARENT)
+			return ERRORS.syntax;
+
 		const err= parseExpr();
 		if(err)
 			return err;
 
-		if(lexer() != ")")
-			return ERRORS.syntax;
-
-		return 0;
-	}
-
-	if(FNS.hasOwnProperty(tok.toUpperCase())) {
-		const fn= FNS[tok.toUpperCase()];
-		if(lexer() != "(")
-			return ERRORS.syntax;
-
-		const err= parseExpr();
-		if(err)
-			return err;
-
-		if(lexer() != ")")
+		if(tokenizer() != TOKENS.RIGHT_PARENT)
 			return ERRORS.syntax;
 
 		writeBufferProgram(SIZE.byte, TYPES.fn);
@@ -198,23 +230,16 @@ function parseTerm() {
 		return 0;
 	}
 
-	if(tok == '$') {
-		const varName= lexer();
-		const nameIdx= addString(varName);
-		writeBufferProgram(SIZE.byte, TYPES.local);
-		writeBufferProgram(SIZE.word, nameIdx);
-		return 0;
-	}
 
-	const isFnCall= lexer(true) == "(";
-	let varIdx= findVar(tok);
+	let varIdx= findVar(lexeme);
 	if(varIdx<0) {
-		varIdx= addVar(tok, 0);
-		if(isFnCall)
-			setVarFunction(varIdx);
+		varIdx= addVar(lexeme, 0);
 	}
 
+	const isFnCall= tokenizer(true) == TOKENS.LEFT_PARENT;
 	if(isFnCall) {
+		setVarFunction(varIdx);
+
 		lexer();
 
 		const err= parseExpr();

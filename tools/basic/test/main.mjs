@@ -4,17 +4,22 @@ import { run } from "./vm.mjs";
 import { ERRORS } from "./defs.mjs";
 import { dumpVars } from "./vars.mjs";1
 import { dumpArrays } from "./arrays.mjs";1
-import { dumpStrings } from "./strings.mjs";1
+import { dumpStrings } from "./strings.mjs";
+import { list } from "./list.mjs";
+
 
 const src= `
-5 let parm_1%= 50
-6 print "parm_1% = ";parm_1%
+1 rem this is a test
+5 let parm_1= 50.1
+6 print "parm_1 = ";parm_1
+7 end
 10 for i%=0 to 9
-40     print test%(i%)
+40     print test(i%)
 50 next i%
-55 let parm_1%= 60
+55 let parm_1= 60
 99 end
-100 function test%($parm_1: string)
+100 function test($parm_1: float)
+150     let test= $parm_1 * 2
 200     return $parm_1 * 2
 300 end function
 `;
@@ -102,7 +107,14 @@ const src= `
 350 END
  */
 
-const prg= parseSource(src);
+const argv = process.argv.slice(2);
+const args= {};
+argv.forEach(arg => {
+	const [key, value]= arg.split(/\s*=\s*/);
+	args[key]= (value ?? 1)*1;
+});
+
+const prg= parseSource(src, args["parser"]);
 if(prg.err) {
 	console.error(`ERR ${hexWord(prg.err)} - ${EnumToName(ERRORS, prg.err)}`, prg.lineNum );
 	console.log(prg.lines);
@@ -110,16 +122,28 @@ if(prg.err) {
 	process.exit();
 }
 
-console.log("************************************");
-console.log("*             RUN                  *");
-console.log("************************************");
+if(args["run"]) {
+	console.log("************************************");
+	console.log("*             RUN                  *");
+	console.log("************************************");
 
-const err= run(prg);
-if(err) {
-	console.error(`ERR ${hexWord(err)} - ${EnumToName(ERRORS, err)}`, prg.lineNum );
+	const err= run(prg);
+	if(err) {
+		console.error(`ERR ${hexWord(err)} - ${EnumToName(ERRORS, err)}`, prg.lineNum );
+	}
 }
 
-dump();
+
+if(args["dump"])
+	dump();
+
+if(args["list"]) {
+	console.log("************************************");
+	console.log("*             LIST                 *");
+	console.log("************************************");
+
+	list();
+}
 
 function dump() {
 	console.log("");
@@ -135,3 +159,4 @@ function dump() {
 	console.log("");
 	dumpStrings();
 }
+

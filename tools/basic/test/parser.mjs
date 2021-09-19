@@ -22,7 +22,7 @@ import { getVarType, setVarType, setVarFunction, setVar, isVarDeclared, getTypeF
 
 let currentLineNum;
 
-export function parseSource(src) {
+export function parseSource(src, wannaDump) {
 	const lines= src.split("\n");
 
 	for(let idx=0; idx<headers.length; idx++)
@@ -51,7 +51,8 @@ export function parseSource(src) {
 	// clear screen
 	// process.stdout.write('\0o33c');
 
-	dump(lines);
+	if(wannaDump)
+		dump(lines);
 
 	return {
 		headers: headers,
@@ -249,6 +250,10 @@ function parseLine() {
 			if(varIdx<0) {
 				varIdx= declareVar(varName, 0);
 			}
+
+			if(getVarType(varIdx) != TYPES.int)
+				return ERRORS.TYPE_MISMATCH;
+
 			let iteratorIdx= addIteratorVar(varIdx);
 			writeBufferProgram(SIZE.word, iteratorIdx);
 
@@ -289,7 +294,11 @@ function parseLine() {
 
 			let varIdx= findVar(varName);
 			if(varIdx<0)
-				varIdx= addVar(varName, context.level);
+				// varIdx= addVar(varName, context.level);
+				varIdx= addVar(varName, 0);
+
+			if(getVarType(varIdx) != TYPES.int)
+				return ERRORS.TYPE_MISMATCH;
 
 			let iteratorIdx= findIteratorVar(varIdx);
 			if(iteratorIdx<0)
@@ -399,6 +408,9 @@ function parseLine() {
 									break;
 								case CMDS.STRING:
 									varType= TYPES.string;
+									break;
+								case CMDS.FLOAT:
+									varType= TYPES.float;
 									break;
 								default:
 									return ERRORS.SYNTAX_ERROR;

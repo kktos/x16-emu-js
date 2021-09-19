@@ -186,6 +186,7 @@ function execStatements() {
 							break;
 						}
 						case TYPES.float: {
+							outStr+= expr.value;
 							break;
 						}
 					}
@@ -397,6 +398,17 @@ function evalExpr() {
 				const num= readBuffer(program, SIZE.word);
 				expr.type= TYPES.int;
 				expr.value= num;
+				break;
+			}
+
+			case TYPES.float: {
+				const buffer= new Uint8Array(4);
+				const view= new DataView(buffer.buffer);
+				for(let idx= 0; idx<4; idx++) {
+					view.setUint8(idx, readBuffer(program, SIZE.byte));
+				}
+				expr.type= TYPES.float;
+				expr.value= view.getFloat32(0);
 				break;
 			}
 

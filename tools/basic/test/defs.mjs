@@ -1,11 +1,13 @@
 
+const identiferChar0= "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
 const identiferChars= "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
-const numberChars= "0123456789";
+const numberChars= ".0123456789";
 const ws= " \t";
 
 const SIZE= {
 	byte: 1,
 	word: 2,
+	long: 3,
 }
 
 const TYPES= {
@@ -64,6 +66,8 @@ const CMDS= {
 	FUNCTION: 0x53,
 	END_FUNCTION: 0x54,
 
+	LIST: 0x60,
+
 	"(": 0xE0,
 	")": 0xE1,
 	"$": 0xE2,
@@ -84,6 +88,10 @@ const TOKENS = {
 	COMMA: CMDS[","],
 	SEMICOLON: CMDS[";"],
 	COLON: CMDS[":"],
+
+	_INT: 0xF0,
+	_FLOAT: 0xF1,
+	_STRING: 0xF2,
 };
 
 const OPERATORS= {
@@ -149,6 +157,7 @@ let source= {
 
 export {
 	source,
+	identiferChar0,
 	identiferChars,
 	numberChars,
 	ws,

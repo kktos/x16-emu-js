@@ -67,6 +67,9 @@ function disasLine() {
 			}
 			break;
 		}
+		case CMDS.END: {
+			break;
+		}
 		case CMDS.END_FUNCTION: {
 			break;
 		}
@@ -141,7 +144,7 @@ function disasLine() {
 		}
 		case CMDS.REM: {
 			const strIdx= readProgramWord();
-			console.log(hexWord(addr),":", hexWord(strIdx), "  ;", strings[strIdx]);
+			console.log(hexWord(addr),":", hexWord(strIdx), "  ;", getString(strIdx));
 			break;
 		}
 		default: {
@@ -160,6 +163,10 @@ function dump2Bytes(b1, b2, cmt) {
 
 function dumpWord(word, cmt) {
 	console.log(hexWord(addr),":", hexWord(word), cmt ? `     ;${cmt}` : "");
+}
+
+function dumpLong(long, cmt) {
+	console.log(hexWord(addr),":", hexWord(long>>16)+hexWord(long & 0xFFFF), cmt ? ` ;${cmt}` : "");
 }
 
 function dumpByteWord(byte, word, cmt) {
@@ -204,6 +211,17 @@ function disasmExpr() {
 				const num= readProgramWord();
 				addr= memaddr;
 				dumpByteWord(itemType, num, "int: "+num);
+				break;
+			}
+			case TYPES.float: {
+				const buffer= new Uint8Array(4);
+				const view= new DataView(buffer.buffer);
+				for(let idx= 0; idx<4; idx++) {
+					view.setInt8(idx, readProgramByte());
+				}
+				addr= memaddr;
+				dumpByte(itemType, "float: ");
+				dumpLong(view.getUint32(0), view.getFloat32(0));
 				break;
 			}
 			case TYPES.var: {
