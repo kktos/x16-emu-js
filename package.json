@@ -9,7 +9,8 @@
     "build": "webpack --config webpack.prod.js",
     "start": "webpack serve --open --config webpack.dev.js",
     "asm:basic": "c:\\devtools\\cc65\\bin\\ca65.exe .\\tools\\basic\\strToHex.asm",
-    "parser": "node tools/basic/test/main.mjs run"
+    "parse": "node tools/basic/test/main.mjs parser",
+    "run": "node tools/basic/test/main.mjs run"
   },
   "author": "",
   "license": "ISC",

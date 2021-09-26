@@ -9,6 +9,21 @@ import { list } from "./list.mjs";
 
 
 const src= `
+10 dim a$(10)
+20 let tmp$="toto"
+30 let a$(i%)= tmp$
+`;
+/*
+10 dim a$(10)
+20 for i%=0 to 9
+25 let tmp$= chr$(65+i%)
+30 let a$(i%)= tmp$
+31 let tmp$="prout"
+35 print a$(i%)
+40 next i%
+
+110 	let $this = 0
+
 1 rem this is a test
 5 let parm_1= 50.1
 6 print "parm_1 = ";parm_1
@@ -22,9 +37,6 @@ const src= `
 150     let test= $parm_1 * 2
 200     return $parm_1 * 2
 300 end function
-`;
-/*
-110 	let $this = 0
 
 10 print peek%(36)
 20 end

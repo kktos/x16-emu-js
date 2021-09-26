@@ -182,7 +182,8 @@ function parseLine() {
 
 			let varIdx= findVar(varName);
 			if(varIdx<0) {
-				varIdx= declareVar(varName, context.level, true);
+				// varIdx= declareVar(varName, context.level, true);
+				varIdx= declareVar(varName, 0, true);
 			} else {
 				const isArray= getVarType(varIdx) & TYPES.ARRAY;
 				if(!isArray)

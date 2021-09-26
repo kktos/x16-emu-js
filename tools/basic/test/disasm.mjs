@@ -274,9 +274,9 @@ export function dumpLines() {
 	while(lineCursor < prgLines.idx) {
 		console.log(
 			hexWord(lineCursor),":",
-			readLineWord(),
-			hexWord(readLineWord()),
-			hexWord(readLineWord())
+			"lineNum=", readLineWord(),
+			"codePtr=", hexWord(readLineWord()),
+			"nextPtr=", hexWord(readLineWord())
 		);
 
 	}

@@ -1,8 +1,9 @@
 import { readBufferHeader } from "./buffer.mjs";
 import { HEADER, TYPES, FNS, OPERATORS, prgLines, prgCode, CMDS } from "./defs.mjs";
 import { EnumToName } from "./utils.mjs";
-import { getVarName } from "./vars.mjs";
+import { getVarName, getVar } from "./vars.mjs";
 import { getString } from "./strings.mjs";
+import { getArraySize } from "./arrays.mjs";
 
 let prgCursor= 0;
 let lineCursor= 0;
@@ -192,15 +193,17 @@ function printLine(lineNum) {
 		}
 		case CMDS.SET: {
 			const varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "     ;", getVarName(varIdx)+"[] =");
+			out += getVarName(varIdx) + "[";
 			out+= printExpr();
+			out+= "]=  ";
 			out+= printExpr();
 			break;
 		}
 		case CMDS.DIM: {
 			const varIdx= readProgramWord();
-			// console.log(hexWord(addr),":", hexWord(varIdx), "     ;", getVarName(varIdx)+"[]");
-			// disasmExpr();
+			const arrayIdx= getVar(varIdx);
+			const arraySize= getArraySize(arrayIdx);
+			out += getVarName(varIdx) + "[" + arraySize + "]";
 			break;
 		}
 		case CMDS.REM: {

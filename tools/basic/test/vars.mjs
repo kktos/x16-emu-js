@@ -71,8 +71,7 @@ export function addVarNameIdx(nameIdx, level, varType, isArray= false, isDeclare
 	let count= readWord(0);
 	let slotCount= 1;
 
-	varType= varType | (isDeclared ? 0 : TYPES.UNDECLARED) | (isArray ? TYPES.ARRAY : 0)
-	writeVarByte(count, FIELDS.TYPE, varType);
+	writeVarByte(count, FIELDS.TYPE, varType | (isDeclared ? 0 : TYPES.UNDECLARED) | (isArray ? TYPES.ARRAY : 0));
 	writeVarByte(count, FIELDS.LEVEL, level);
 	writeVarWord(count, FIELDS.NAME, nameIdx);
 	writeVarWord(count, FIELDS.VALUE, 0xFFFF);
@@ -276,28 +275,32 @@ export function dumpVars() {
 
 	let idx= count-1;
 	while(idx >= 0) {
-		let type= readVarByte(idx, FIELDS.TYPE);
-		if(!type) {
+		let typeFlags= readVarByte(idx, FIELDS.TYPE);
+		if(!typeFlags) {
 			idx--;
 			continue;
 		}
+
 		const nameIdx= readVarWord(idx, FIELDS.NAME);
 		let name= getString(nameIdx);
 		let value= readVarWord(idx, FIELDS.VALUE);
 		let level= readVarByte(idx, FIELDS.LEVEL);
 
 		let arraySize;
-		const isArray= type & TYPES.ARRAY;
+		const isArray= typeFlags & TYPES.ARRAY;
 		if(isArray) {
-			// type= type & (TYPES.ARRAY ^ 0xFF);
+			// typeFlags= typeFlags & (TYPES.ARRAY ^ 0xFF);
 			arraySize= getArraySize(value);
 		}
-		const isFunction= type & TYPES.FUNCTION;
-		const isDeclared= !(type & TYPES.UNDECLARED);
+		const isFunction= typeFlags & TYPES.FUNCTION;
+		const isDeclared= !(typeFlags & TYPES.UNDECLARED);
+		const type= typeFlags & TYPES.SCALAR;
 
-		type&= TYPES.SCALAR;
-
-		if(!isFunction)
+		if(isArray) {
+			value= hexWord(value);
+		}
+		else
+		if(!isFunction) {
 			switch(type) {
 				case TYPES.string: {
 					value= value ? '"' + getString(value) + '"' : undefined;
@@ -308,6 +311,7 @@ export function dumpVars() {
 					const max= readVarWord(idx+1, FIELDS.NAME);
 					const ptr= readVarWord(idx+1, FIELDS.VALUE);
 					value= `INC:${hexWord(value)} MAX:${hexWord(max)} PTR:${hexWord(ptr)}`;
+					break;
 				}
 				case TYPES.float: {
 					const buffer= new Uint8Array(4);
@@ -316,14 +320,17 @@ export function dumpVars() {
 						view.setInt8(idx, readVarByte(idx+1, FIELDS.NAME + idx));
 					}
 					value= view.getFloat32(0);
+					break;
 				}
 			}
+		}
 
 		console.log(
 			String(idx).padStart(2, "0"),
 			(level>0 ? "L" : "G")+hexByte(level),
 			name,
 			":",
+			hexByte(typeFlags),
 			EnumToName(TYPES, type)
 				+ (isArray ? "["+arraySize+"]" : "")
 				+ (isFunction ? "()" : "")				,
