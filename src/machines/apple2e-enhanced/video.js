@@ -10,6 +10,28 @@ const MODE= {
 	GR: 1,
 	HGR: 2
 };
+const grColours= [
+	"#000000",
+	"#722640",
+	"#40337f",
+	"#e434fe",
+	"#0e5940",
+	"#808080",
+	"#1b9afe",
+	"#bfb3ff",
+	"#404c00",
+	"#e46501",
+	"#808080",
+	"#f1a6bf",
+	"#1bcb01",
+	"#bfcc80",
+	"#8dd9bf",
+	"#ffffff"
+];
+
+function hexWord(val) {
+	return val.toString(16).padStart(4, '0').toUpperCase();
+}
 
 export default class Video {
 	constructor(memory, vm) {
@@ -17,6 +39,8 @@ export default class Video {
 		this.vm= vm;
 		this.mode= MODE.TEXT;
 		this.col80= false;
+		this.mixed= false;
+		this.lastGRMode= MODE.GR;
 	}
 
 	get width() {
@@ -37,6 +61,24 @@ export default class Video {
 			case "col80":
 				this.col80= true;
 				break;
+			case "gr":
+				this.mode= this.lastGRMode;
+				break;
+			case "text":
+				this.mode= MODE.TEXT;
+				break;
+			case "low":
+				this.mode= this.lastGRMode= MODE.GR;
+				break;
+			case "high":
+				this.mode= this.lastGRMode= MODE.HGR;
+				break;
+			case "mixed":
+				this.mixed= true;
+				break;
+			case "full":
+				this.mixed= false;
+				break;
 		}
 	}
 
@@ -46,6 +88,34 @@ export default class Video {
 		ctx.fillStyle= "white";
 		ctx.font = '20px "PrintChar21"';
 		for(let line= 0; line<24; line++)
+			for(let column= 0; column<40; column++) {
+				const addr= TEXT_LINES[line]+column;
+				let ascii= this.memory[addr];
+				if(ascii<=0x1F)
+					ascii+= 0xE140;
+				else
+				if(ascii<=0x3F)
+					ascii+= 0xE100;
+				else
+				if(ascii<=0x5F)
+					ascii+= 0xE100;
+				else
+				if(ascii<=0x7F)
+					ascii+= 0xE100;
+				else
+				if(ascii>=0xA0)
+					ascii-= 0x80;
+				const char= String.fromCharCode(ascii);
+				ctx.fillText(char, x+(15*column), y+(22*line));
+			}
+	}
+
+	renderText40Mixed(ctx) {
+		let x= 7;
+		let y= 7+22;
+		ctx.fillStyle= "white";
+		ctx.font = '20px "PrintChar21"';
+		for(let line= 20; line<24; line++)
 			for(let column= 0; column<40; column++) {
 				const addr= TEXT_LINES[line]+column;
 				let ascii= this.memory[addr];
@@ -113,6 +183,31 @@ export default class Video {
 
 	}
 
+	renderLowGraphic(ctx) {
+		let x= 5;
+		let y= 10;
+		for(let line= 0; line<(this.mixed ? 40 : 48); line+=2) {
+			for(let column= 0; column<40; column++) {
+				const addr= TEXT_LINES[line/2]+column;
+				let byte= this.memory[addr];
+				ctx.fillStyle= grColours[byte & 0x0F];
+				ctx.fillRect(x+(15*column), y+(11*line), 20, 11);
+				ctx.fillStyle= grColours[byte>>4 & 0x0F];
+				ctx.fillRect(x+(15*column), y+(11*(line+1)), 20, 11);
+			}
+
+			// if((line & 1) == 0) {
+			// 	const addr= TEXT_LINES[line/2];
+			// 	ctx.fillStyle="#FFFFFF";
+			// 	ctx.font = "12pt courier";
+			// 	ctx.fillText(hexWord(addr), 5, y+(11*line)+14);
+			// }
+
+		}
+		if(this.mixed)
+			this.renderText40Mixed(ctx);
+	}
+
 	update({tick, viewport:{ctx, canvas}}, cycles) {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -120,6 +215,9 @@ export default class Video {
 		switch(this.mode) {
 			case MODE.TEXT:
 				this.col80 ? this.renderText80(ctx) : this.renderText40(ctx);
+				break;
+			case MODE.GR:
+				this.renderLowGraphic(ctx);
 				break;
 		}
 
@@ -146,3 +244,4 @@ export default class Video {
 	}
 
 }
+

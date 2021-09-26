@@ -90,6 +90,19 @@ const SWITCHES = {
 	// R7 80COL 1=80 col display on0=80 col display off
 	"80COL": 0xC01F,
 
+	// R/W Select graphics mode
+	TEXTOFF: 0xC050,
+	// R/W Select text mode
+	TEXTON: 0xC051,
+	// R/W Use full screen for graphics
+	MIXEDOFF: 0xC052,
+	// R/W Use graphics with 4 lines of text
+	MIXEDON: 0xC053,
+	// R/W Select low resolution graphics
+	HIRESOFF: 0xC056,
+	// R/W Select high resolution graphics
+	HIRESON: 0xC057,
+
 	// R/W PAGE2OFF Select panel display (or main video memory)
 	PAGE2OFF: 0xC054,
 	// R/W PAGE2ON Select page2 display (or aux video memory)
@@ -124,6 +137,8 @@ export default class Bus {
 		this.altCharsetOn= false;
 		this.cxMainRomOn= false;
 		this.graphicOn= false;
+		this.HiResOn= false;
+		this.MixedOn= false;
 	}
 
 	_read(bank, addr) {
@@ -198,15 +213,41 @@ export default class Bus {
 			case SWITCHES.TEXT:
 				value= this.graphicOn ? 0 : 0x80;
 				break;
+			case SWITCHES.MIXED:
+				value= this.MixedOn ? 0x80 : 0;
+				break;
+			case SWITCHES.HIRES:
+				value= this.HiResOn ? 0x80 : 0;
+				break;
+
+			case SWITCHES.TEXTOFF:
+				value= (this.graphicOn=0x80);
+				this.controller.postMessage({cmd:"video", data:{mode: "gr"}});
+				break;
+
+			case SWITCHES.TEXTON:
+				value= (this.graphicOn=0);
+				this.controller.postMessage({cmd:"video", data:{mode: "text"}});
+				break;
+
+			case SWITCHES.MIXEDOFF:
+				value= (this.MixedOn=0);
+				this.controller.postMessage({cmd:"video", data:{mode: "full"}});
+				break;
+
+			case SWITCHES.MIXEDON:
+				value= (this.MixedOn=0x80);
+				this.controller.postMessage({cmd:"video", data:{mode: "mixed"}});
+				break;
 
 		}
 		console.log(
 			"READ",
 			addr.toString(16),
 			value.toString(16),
-			"-- col80On",this.col80On,
-			"-- store80On", this.store80On,
-			"-- videoPage", this.videoPage
+			// "-- col80On",this.col80On,
+			// "-- store80On", this.store80On,
+			// "-- videoPage", this.videoPage
 		);
 		return value;
 	}
