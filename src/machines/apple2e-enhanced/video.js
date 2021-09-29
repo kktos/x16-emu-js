@@ -3,7 +3,7 @@ https://retrocomputing.stackexchange.com/questions/8652/why-did-the-original-app
 
 apple 2 font : https://www.kreativekorp.com/software/fonts/apple2.shtml
 */
-import {TEXT_LINES} from "../ram_map.js";
+import {TEXT_LINES, HGR_LINES} from "../ram_map.js";
 
 const MODE= {
 	TEXT: 0,
@@ -28,6 +28,25 @@ const grColours= [
 	"#8dd9bf",
 	"#ffffff"
 ];
+const hgrColours= [
+	// palette 0
+	{
+		black: "#000000", // black
+		col1: "#DD22DD", // purple
+		col2: "#10CF00", // green
+		white: "#FFFFFF", // white
+	},
+	// palette 1
+	{
+		black: "#000000", // black
+		col1: "#2222FF", // blue
+		col2: "#FF6600", // orange
+		white: "#FFFFFF", // white
+	}
+];
+
+const hPixW= 4;
+const hPixH= 4;
 
 function hexWord(val) {
 	return val.toString(16).padStart(4, '0').toUpperCase();
@@ -43,12 +62,16 @@ export default class Video {
 		this.lastGRMode= MODE.GR;
 	}
 
+	// 620x548 -> ratio 1.13
+	// 700x619 -> ratio 1.13
 	get width() {
-		return 40*15+20;
+		return 700;
+		// return 40*15+20; // 620
 	}
 
 	get height() {
-		return 24*22+20;
+		return 619;
+		// return 24*22+20; // 548
 	}
 
 	handleMessage(msg) {
@@ -208,6 +231,203 @@ export default class Video {
 			this.renderText40Mixed(ctx);
 	}
 
+	renderHighGraphic(ctx) {
+		let pal;
+		let line;
+		let column;
+		let x;
+		let pixCurrent, pixBefore, pixAfter;
+
+		function draw(isSamePal= true) {
+			switch(pixCurrent) {
+				case 0: {
+					// ctx.fillStyle= hgrColours[pal].black;
+					// ctx.fillRect(x, y+line*hPixH, hPixW*2, hPixH);
+					break;
+				}
+				case 3: {
+					ctx.fillStyle= hgrColours[pal].white;
+					ctx.fillRect(x, y+line*hPixH, hPixW*2, hPixH);
+					break;
+				}
+				// 01
+				case 1: {
+					// 01 10 -> B W W B
+					if(false && pixBefore==0x02) {
+						ctx.fillStyle= hgrColours[pal].white;
+						ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
+						// ctx.fillStyle= hgrColours[pal].black;
+						ctx.fillStyle= "#FF0000";
+						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+						break;
+					}
+
+					const col= hgrColours[pal].col1;
+
+					ctx.fillStyle= col;
+					ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
+
+					ctx.fillStyle= (pixCurrent == pixAfter)||pixAfter==0x3 ? col : hgrColours[pal].black;
+					ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+					break;
+				}
+				// 10
+				case 0x02: {
+					// 01 10 -> B W W B
+					if(false && pixAfter==0x01) {
+						// ctx.fillStyle= hgrColours[pal].black;
+						ctx.fillStyle= "#0000FF";
+						ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
+						ctx.fillStyle= hgrColours[pal].white;
+						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+						break;
+					}
+
+					const col= hgrColours[pal].col2;
+
+					ctx.fillStyle= (pixCurrent == pixBefore)||pixBefore==0x3 ? col : hgrColours[pal].black;
+					ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
+
+					ctx.fillStyle= hgrColours[isSamePal ? pal : 0+!pal].col2;
+					ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+					break;
+				}
+			}
+			// x+= (hPixW+2)*2;
+			x+= hPixW*2;
+			pixBefore= pixCurrent;
+			pixCurrent= pixAfter;
+		}
+
+		let y= 10;
+		// for(line= 101; line<(this.mixed ? 102 : 191); line++) {
+		for(line= 0; line<(this.mixed ? 150 : 191); line++) {
+			pixBefore= -1;
+			for(column= 0; column<40; column+= 2) {
+			// for(column= 0; column<4; column+= 2) {
+				const addr= HGR_LINES[line]+column;
+				const b1= this.memory[addr];
+				const b2= this.memory[addr+1];
+				const b3= this.memory[addr+3];
+
+				// x= 5 + 7 * column * (hPixW+2);
+				x= 5 + 7 * column * hPixW;
+				pal= b1 & 0x80 ? 1 : 0;
+				let pal2= b2 & 0x80 ? 1 : 0;
+
+				pixCurrent= b1 & 0x3; // x000 0011
+
+				pixAfter= (b1>>2) & 0x3; // x000 1100;
+				draw();
+
+				pixAfter= (b1>>4)&0x3; // x011 0000;
+				draw();
+
+				pixAfter= ((b1 & 0x40)>>6) | (b2<<1 & 0x2); // x000 0001 x100 0000
+				draw();
+
+				pixAfter=  b2>>1 & 0x3; // x000 0110
+				draw(pal == pal2);
+
+				pal= pal2;
+
+				pixAfter= b2>>3 & 0x3; // x001 1000
+				draw();
+
+				pixAfter= b2>>5 & 0x3; // x110 0000
+				draw();
+
+				pal2= b3 & 0x80 ? 1 : 0;
+				pixAfter= b3 & 0x3;
+				// draw(pal == pal2);
+				draw();
+
+			}
+
+			// if((line & 1) == 0) {
+			// 	const addr= TEXT_LINES[line/2];
+			// 	ctx.fillStyle="#FFFFFF";
+			// 	ctx.font = "12pt courier";
+			// 	ctx.fillText(hexWord(addr), 5, y+(11*line)+14);
+			// }
+
+		}
+		if(this.mixed)
+			this.renderText40Mixed(ctx);
+	}
+
+	// renderHighGraphic2(ctx) {
+
+	// 	const hgrColours= [
+	// 		// palette 0
+	// 		[
+	// 			"#000000", // black
+	// 			"#DD22DD", // purple
+	// 			"#10CF00", // green
+	// 			"#FFFFFF", // white
+	// 		],
+	// 		// palette 1
+	// 		[
+	// 			"#000000", // black
+	// 			"#2222FF", // blue
+	// 			"#FF6600", // orange
+	// 			"#FFFFFF", // white
+	// 		]
+	// 	];
+
+
+	// 	let pixelLine= [];
+
+	// 	for(line= 0; line<(this.mixed ? 150 : 191); line++) {
+	// 		for(column= 0; column<40; column+= 2) {
+	// 			const addr= HGR_LINES[line]+column;
+	// 			let b1= this.memory[addr];
+	// 			let b2= this.memory[addr+1];
+	// 			let pal1= b1 & 0x80 ? 1 : 0;
+	// 			let pal2= b2 & 0x80 ? 1 : 0;
+	// 			let pix;
+	// 			let pal;
+
+	// 			pal= pal1;
+
+	// 			// x000 0011
+	// 			pix= b1 & 0x03;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			// x000 1100
+	// 			pix= b1>>2 & 0x03;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			// x011 0000
+	// 			pix= b1>>4 & 0x03;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			// x100 0000
+	// 			pix= b1>>6 & 0x1;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			pal= pal2;
+
+	// 			// x000 0001 x000 0000
+	// 			pix= b2 & 0x1;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			// x000 0110 x000 0000
+	// 			pix= b2>>1 & 0x3;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			// x001 1000 x000 0000
+	// 			pix= b2>>3 & 0x3;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+
+	// 			// x110 0000 x000 0000
+	// 			pix= b2>>5 & 0x3;
+	// 			pixelLine.push( hgrColours[pal][pix] );
+	// 		}
+	// 	}
+
+	// }
+
 	update({tick, viewport:{ctx, canvas}}, cycles) {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -218,6 +438,9 @@ export default class Video {
 				break;
 			case MODE.GR:
 				this.renderLowGraphic(ctx);
+				break;
+			case MODE.HGR:
+				this.renderHighGraphic(ctx);
 				break;
 		}
 

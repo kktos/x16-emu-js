@@ -240,6 +240,16 @@ export default class Bus {
 				this.controller.postMessage({cmd:"video", data:{mode: "mixed"}});
 				break;
 
+			case SWITCHES.HIRESOFF:
+				value= (this.HiResOn=0);
+				this.controller.postMessage({cmd:"video", data:{mode: "low"}});
+				break;
+
+			case SWITCHES.HIRESON:
+				value= (this.HiResOn=0x80);
+				this.controller.postMessage({cmd:"video", data:{mode: "high"}});
+				break;
+
 		}
 		console.log(
 			"READ",

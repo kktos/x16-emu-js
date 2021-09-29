@@ -1,5 +1,6 @@
 import Video from "./video.js";
 import ROM from "./rom-C000-FFFF";
+import HGR_IMG from "./hgr-img";
 
 /**
  *
@@ -43,6 +44,11 @@ const machine= {
 				bank: 0,
 				addr: 0x0300,
 				data: "20 58 fc a9 aa 8d 80 7 8d 55 c0 8d 80 07 8d 54 c0 60"
+			},
+			{
+				bank: 0,
+				addr: 0x02000,
+				data: HGR_IMG
 			}
 		],
 	},

@@ -17,7 +17,7 @@ export default class VM {
 		this.gc= {
 			viewport: {
 				canvas,
-				ctx: canvas.getContext("2d"),
+				ctx: canvas.getContext("2d", { alpha: false }),
 			},
 
 			dt: inc,
@@ -45,6 +45,8 @@ export default class VM {
 		this.video= new machine.Video(this.memory, this);
 		this.canvas.width= this.video.width;
 		this.canvas.height= this.video.height;
+		this.gc.viewport.ctx.imageSmoothingEnabled = false; // magic!
+		this.gc.viewport.ctx.msImageSmoothingEnabled = false; // magic!
 
 		this.setupMemoryMap(machine);
 	}
