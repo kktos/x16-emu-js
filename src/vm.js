@@ -1,6 +1,7 @@
+import MyWorker from "./cpu/controller.js?worker";
+import Debugger from "./debugger.js";
 import ENV from "./env.js";
 import KeyMap from "./keymap.js";
-import Debugger from "./debugger.js";
 
 let lastTime,
 	acc,
@@ -11,6 +12,7 @@ const OneMHz= 1_000_000 * ENV.FPS | 0;
 export default class VM {
 
 	constructor(canvas, machine) {
+		this.machine= machine;
 		this.canvas= canvas;
 		this.isRunning= true;
 
@@ -27,16 +29,19 @@ export default class VM {
 			keys: new KeyMap(),
 		};
 
-		this.worker= new Worker(new URL('./cpu/controller.js', import.meta.url));
+		this.worker= new MyWorker();
+		// this.worker= new Worker(new URL('./cpu/controller.mjs', import.meta.url));
+		// this.worker= new Worker('/js/cpu/controller.js');
 		this.worker.addEventListener('message', (e) => this.handleMessage(e.data), false);
 
 		this.memory= new SharedArrayBuffer(machine.memory.size);
-		this.sendMessage("setup", {
-			buffer: this.memory,
-			busSrcFile: machine.busSrcFile,
-			debuggerOnBRK: machine.debuggerOnBRK===false ? false : true,
-			NMOS_mode: true
-		});
+
+		// this.sendMessage("setup", {
+		// 	buffer: this.memory,
+		// 	busSrcFile: machine.busSrcFile,
+		// 	debuggerOnBRK: machine.debuggerOnBRK===false ? false : true,
+		// 	NMOS_mode: true
+		// });
 
 		this.setSpeed(1);
 
@@ -48,11 +53,21 @@ export default class VM {
 		this.gc.viewport.ctx.imageSmoothingEnabled = false; // magic!
 		this.gc.viewport.ctx.msImageSmoothingEnabled = false; // magic!
 
-		this.setupMemoryMap(machine);
 	}
 
-	setupMemoryMap(machine) {
-		machine.memory.map.forEach(({bank, addr, data}) => {
+	async setup() {
+		await this.waitMessage("setup", {
+			buffer: this.memory,
+			busSrcFile: this.machine.busSrcFile,
+			debuggerOnBRK: this.machine.debuggerOnBRK===false ? false : true,
+			NMOS_mode: true
+		});
+
+		this.setupMemoryMap();
+	}
+
+	setupMemoryMap() {
+		this.machine.memory.map.forEach(({bank, addr, data}) => {
 			this.memWrite(bank, addr, data);
 		});
 	}
@@ -89,7 +104,7 @@ export default class VM {
 	}
 
 	handleMessage(msg) {
-		console.log("handleMessage", msg);
+		// console.log("handleMessage", msg);
 
 		switch(msg.cmd) {
 			case "video":

@@ -45,8 +45,8 @@ const hgrColours= [
 	}
 ];
 
-const hPixW= 4;
-const hPixH= 4;
+const hPixW= 1;
+const hPixH= 1;
 
 function hexWord(val) {
 	return val.toString(16).padStart(4, '0').toUpperCase();
@@ -60,6 +60,12 @@ export default class Video {
 		this.col80= false;
 		this.mixed= false;
 		this.lastGRMode= MODE.GR;
+		// this.cacheText40= this.buildCacheText40();
+		this.cacheHGR= [null, null, null, null];
+		this.cacheHGRstate= [true, true, true, true];
+		this.refreshCount= 0;
+
+		this.mode= this.lastGRMode= MODE.HGR;
 	}
 
 	// 620x548 -> ratio 1.13
@@ -70,12 +76,16 @@ export default class Video {
 	}
 
 	get height() {
-		return 619;
+		return 620;
 		// return 24*22+20; // 548
 	}
 
 	handleMessage(msg) {
-		console.log("Video.handleMessage", msg);
+		// console.log("Video.handleMessage", msg);
+
+		if(msg.update != undefined)
+			return this.cacheHGRstate[msg.update]= true;
+			// return this.buildHGRScreenPart(this.vm.gc.viewport.canvas, msg.update);
 
 		switch(msg.mode) {
 			case "col40":
@@ -105,6 +115,45 @@ export default class Video {
 		}
 	}
 
+	// buildCacheText40() {
+	// 	const cache= {};
+	// 	let x= 7;
+	// 	let y= 7+22;
+	// 	for(let ascii= 0; ascii<256; ascii++) {
+
+	// 		const buffer = document.createElement('canvas');
+	// 		const ctx= buffer.getContext("2d", { alpha: false });
+	// 		buffer.width= 10;
+	// 		buffer.height= 20;
+
+	// 		cache[ascii]= buffer;
+	// 		let code= ascii;
+
+	// 		if(code<=0x1F)
+	// 			code+= 0xE140;
+	// 		else
+	// 		if(code<=0x3F)
+	// 			code+= 0xE100;
+	// 		else
+	// 		if(code<=0x5F)
+	// 			code+= 0xE100;
+	// 		else
+	// 		if(code<=0x7F)
+	// 			code+= 0xE100;
+	// 		else
+	// 		if(code>=0xA0)
+	// 			code-= 0x80;
+	// 		const char= String.fromCharCode(code);
+
+	// 		ctx.imageSmoothingEnabled = false;
+	// 		ctx.msImageSmoothingEnabled = false;
+	// 		ctx.fillStyle= "white";
+	// 		ctx.font = '20px "PrintChar21"';
+	// 		ctx.fillText(char, 0, 20);
+	// 	}
+	// 	return cache;
+	// }
+
 	renderText40(ctx) {
 		let x= 7;
 		let y= 7+22;
@@ -114,6 +163,13 @@ export default class Video {
 			for(let column= 0; column<40; column++) {
 				const addr= TEXT_LINES[line]+column;
 				let ascii= this.memory[addr];
+
+				if(ascii == 0xA0)
+					continue;
+
+				// if(ascii != 0x20)
+				// 	ctx.drawImage(this.cacheText40[0xA1], x+(15*column), y+(22*line));
+
 				if(ascii<=0x1F)
 					ascii+= 0xE140;
 				else
@@ -130,6 +186,7 @@ export default class Video {
 					ascii-= 0x80;
 				const char= String.fromCharCode(ascii);
 				ctx.fillText(char, x+(15*column), y+(22*line));
+
 			}
 	}
 
@@ -142,6 +199,10 @@ export default class Video {
 			for(let column= 0; column<40; column++) {
 				const addr= TEXT_LINES[line]+column;
 				let ascii= this.memory[addr];
+
+				if(ascii == 0xA0)
+					continue;
+
 				if(ascii<=0x1F)
 					ascii+= 0xE140;
 				else
@@ -170,6 +231,10 @@ export default class Video {
 			for(let column= 0; column<80; column++) {
 				const addr= TEXT_LINES[line]+(column/2)|0;
 				let ascii= this.memory[column&1 ? addr : 0x10000+addr];
+
+				if(ascii == 0xA0)
+					continue;
+
 				if(ascii<=0x1F)
 					ascii+= 0xE140;
 				else
@@ -231,14 +296,161 @@ export default class Video {
 			this.renderText40Mixed(ctx);
 	}
 
-	renderHighGraphic(ctx) {
-		let pal;
-		let line;
-		let column;
-		let x;
+	buildHGRScreenPart(canvas, part) {
+
+		let buffer= this.cacheHGR[part];
+		if(!buffer) {
+			buffer= document.createElement('canvas');
+			this.cacheHGR[part]= buffer;
+			buffer.width= 280;
+			buffer.height= 48; //canvas.height / 4; //192/4;
+
+			// console.log(part, buffer.width, buffer.height);
+		}
+
+		let ctx= buffer.getContext("2d", { alpha: false });
+		ctx.imageSmoothingEnabled = false;
+		ctx.msImageSmoothingEnabled = false;
+		// ctx.scale(1, 2);
+
+		// if(part)
+		// 	return;
+
+		// ctx.strokeStyle= ["#7B7D7D", "#512E5F", "#0B5345", "#6E2C00"][part];
+		// ctx.strokeRect(0, 0, buffer.width, buffer.height);
+		ctx.fillStyle= ["#000000", "#010d16e6", "#000000", "#010d16e6"][part];
+		ctx.fillRect(0, 0, buffer.width, buffer.height);
+
+		this.renderHGRScreenPart(ctx, 48*part, 48*(part+1));
+
+		this.refreshCount++;
+	}
+
+	renderHGRScreenPart(ctx, lineFrom, lineTo) {
+		const incH= hPixW+0;
+		const y= 0;
+		const stepH= 7 * incH;
+		let x, column, pal;
 		let pixCurrent, pixBefore, pixAfter;
 
-		function draw(isSamePal= true) {
+		// console.log("renderHGRScreenPart", lineFrom, lineTo);
+
+		// ctx.fillStyle= "black";
+		// ctx.fillRect(0, 0, 260, lineTo-lineFrom);
+
+		function draw(line) {
+			switch(pixCurrent) {
+				case 3: {
+					// ctx.fillStyle= "gray";
+					ctx.fillStyle= hgrColours[pal].white;
+					ctx.fillRect(x, y+line*hPixH, hPixW*2, hPixH);
+					break;
+				}
+
+				// 01 - VIOLET / BLUE
+				case 1: {
+					const col= hgrColours[pal].col1;
+
+					ctx.fillStyle= pixBefore & 0x2 ? hgrColours[pal].white : col;
+					ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
+
+					if(pixAfter == 0x1||pixAfter==0x3) {
+						ctx.fillStyle= col;
+						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+					}
+					break;
+				}
+
+				// 10 - GREEN / ORANGE
+				case 0x02: {
+					let col= hgrColours[pal].col2;
+
+					if(pixBefore == 0x2||pixBefore==0x3) {
+						ctx.fillStyle= col;
+						ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
+					}
+
+					col= pixAfter==0x3 ? hgrColours[pal].white : hgrColours[pal].col2;
+
+					ctx.fillStyle= col;
+					ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+					break;
+				}
+			}
+			x+= incH*2;
+			pixBefore= pixCurrent;
+			pixCurrent= pixAfter;
+		}
+
+		for(let line= lineFrom; line < lineTo; line++) {
+			pixBefore= -1;
+			for(column= 0; column<40; column+= 2) {
+				const addr= HGR_LINES[line]+column;
+				const b1= this.memory[addr];
+				const b2= this.memory[addr+1];
+
+				x= stepH * column;
+				pal= b1 & 0x80 ? 1 : 0;
+				let pal2= b2 & 0x80 ? 1 : 0;
+
+				pixCurrent= b1 & 0x3; // x000 0011
+
+				pixAfter= (b1>>2) & 0x3; // x000 1100;
+				draw(line - lineFrom);
+
+				pixAfter= (b1>>4)&0x3; // x011 0000;
+				draw(line - lineFrom);
+
+				pixAfter= ((b1 & 0x40)>>6) | (b2<<1 & 0x2); // x000 0001 x100 0000
+				draw(line - lineFrom);
+
+				pixAfter=  b2>>1 & 0x3; // x000 0110
+				draw(line - lineFrom);
+
+				pal= pal2;
+
+				pixAfter= b2>>3 & 0x3; // x001 1000
+				draw(line - lineFrom);
+
+				pixAfter= b2>>5 & 0x3; // x110 0000
+				draw(line - lineFrom);
+
+				// pal2= b3 & 0x80 ? 1 : 0;
+				// pixAfter= b3 & 0x3;
+				pixAfter= pixCurrent;
+				// draw(pal == pal2);
+				draw(line - lineFrom);
+
+			}
+		}
+	}
+
+	renderHighGraphic(ctx) {
+
+		this.cacheHGR.forEach((img, part) => {
+
+			if(this.cacheHGRstate[part]) {
+				this.cacheHGRstate[part]= false;
+				this.buildHGRScreenPart(ctx.canvas, part);
+			}
+
+			if(img)
+				ctx.drawImage(img, 0, part*155, 700, 155);
+		});
+
+		if(this.mixed)
+			this.renderText40Mixed(ctx);
+
+	}
+
+	renderHighGraphic_old(ctx) {
+		const incH= hPixW+0;
+		const y= 10;
+		const stepH= 7 * incH;
+		let x, column, line, pal;
+		let pixCurrent, pixBefore, pixAfter;
+
+		function draw() {
 			switch(pixCurrent) {
 				case 0: {
 					// ctx.fillStyle= hgrColours[pal].black;
@@ -246,72 +458,55 @@ export default class Video {
 					break;
 				}
 				case 3: {
+					// ctx.fillStyle= "gray";
 					ctx.fillStyle= hgrColours[pal].white;
 					ctx.fillRect(x, y+line*hPixH, hPixW*2, hPixH);
 					break;
 				}
-				// 01
-				case 1: {
-					// 01 10 -> B W W B
-					if(false && pixBefore==0x02) {
-						ctx.fillStyle= hgrColours[pal].white;
-						ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
-						// ctx.fillStyle= hgrColours[pal].black;
-						ctx.fillStyle= "#FF0000";
-						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
-						break;
-					}
 
+				// 01 - VIOLET / BLUE
+				case 1: {
 					const col= hgrColours[pal].col1;
 
-					ctx.fillStyle= col;
+					ctx.fillStyle= pixBefore & 0x2 ? hgrColours[pal].white : col;
 					ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
 
-					ctx.fillStyle= (pixCurrent == pixAfter)||pixAfter==0x3 ? col : hgrColours[pal].black;
-					ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+					if(pixAfter == 0x1||pixAfter==0x3) {
+						ctx.fillStyle= col;
+						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
+					}
 					break;
 				}
-				// 10
+
+				// 10 - GREEN / ORANGE
 				case 0x02: {
-					// 01 10 -> B W W B
-					if(false && pixAfter==0x01) {
-						// ctx.fillStyle= hgrColours[pal].black;
-						ctx.fillStyle= "#0000FF";
+					let col= hgrColours[pal].col2;
+
+					if(pixBefore == 0x2||pixBefore==0x3) {
+						ctx.fillStyle= col;
 						ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
-						ctx.fillStyle= hgrColours[pal].white;
-						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
-						break;
 					}
 
-					const col= hgrColours[pal].col2;
+					col= pixAfter==0x3 ? hgrColours[pal].white : hgrColours[pal].col2;
 
-					ctx.fillStyle= (pixCurrent == pixBefore)||pixBefore==0x3 ? col : hgrColours[pal].black;
-					ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
-
-					ctx.fillStyle= hgrColours[isSamePal ? pal : 0+!pal].col2;
+					ctx.fillStyle= col;
 					ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
 					break;
 				}
 			}
-			// x+= (hPixW+2)*2;
-			x+= hPixW*2;
+			x+= incH*2;
 			pixBefore= pixCurrent;
 			pixCurrent= pixAfter;
 		}
 
-		let y= 10;
-		// for(line= 101; line<(this.mixed ? 102 : 191); line++) {
 		for(line= 0; line<(this.mixed ? 150 : 191); line++) {
 			pixBefore= -1;
 			for(column= 0; column<40; column+= 2) {
-			// for(column= 0; column<4; column+= 2) {
 				const addr= HGR_LINES[line]+column;
 				const b1= this.memory[addr];
 				const b2= this.memory[addr+1];
-				const b3= this.memory[addr+3];
 
-				// x= 5 + 7 * column * (hPixW+2);
-				x= 5 + 7 * column * hPixW;
+				x= 5 + stepH * column;
 				pal= b1 & 0x80 ? 1 : 0;
 				let pal2= b2 & 0x80 ? 1 : 0;
 
@@ -337,20 +532,13 @@ export default class Video {
 				pixAfter= b2>>5 & 0x3; // x110 0000
 				draw();
 
-				pal2= b3 & 0x80 ? 1 : 0;
-				pixAfter= b3 & 0x3;
+				// pal2= b3 & 0x80 ? 1 : 0;
+				// pixAfter= b3 & 0x3;
+				pixAfter= pixCurrent;
 				// draw(pal == pal2);
 				draw();
 
 			}
-
-			// if((line & 1) == 0) {
-			// 	const addr= TEXT_LINES[line/2];
-			// 	ctx.fillStyle="#FFFFFF";
-			// 	ctx.font = "12pt courier";
-			// 	ctx.fillText(hexWord(addr), 5, y+(11*line)+14);
-			// }
-
 		}
 		if(this.mixed)
 			this.renderText40Mixed(ctx);
@@ -432,10 +620,13 @@ export default class Video {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
 
+		const s = performance.now();
+
 		switch(this.mode) {
-			case MODE.TEXT:
+			case MODE.TEXT: {
 				this.col80 ? this.renderText80(ctx) : this.renderText40(ctx);
 				break;
+			}
 			case MODE.GR:
 				this.renderLowGraphic(ctx);
 				break;
@@ -444,6 +635,10 @@ export default class Video {
 				break;
 		}
 
+		const e = performance.now();
+		ctx.fillStyle="red";
+		ctx.font = '16px monospace';
+		ctx.fillText(`${(e - s).toFixed(2)}ms ${this.refreshCount}`, 10, canvas.height-10);
 
 		// ctx.fillStyle="#7777FF";
 		// ctx.font = '12px monospace';

@@ -1,9 +1,10 @@
+import { core, opcodes } from "./core65c02";
+
 /*
+
  Slightly modified version of Joey Shepard's
  https://github.com/JoeyShepard/65C02_Emulator/blob/master/emu6502.js
 */
-
-import { core, opcodes } from "./core65c02";
 
 /*Limitations:
 1. No wrapping at 64k boundary
@@ -141,15 +142,14 @@ function recordCycle()
 //*MESSAGE LOOP*
 //**************
 
-function OnMessage({data:{cmd, id, data}})
+async function OnMessage({data:{cmd, id, data}})
 {
-	console.log("FROM MAIN", cmd, id, data);
-
 	debugflag= '';
 	switch(cmd) {
 
 		case 'setup':
-			setup(data);
+			await setup(data);
+			self.postMessage({cmd: "setup", id: id, data: "done" });
 			break;
 
 		// case 'debug':
@@ -314,19 +314,19 @@ function dumpMem(addr) {
 //*SETUP FUNCTION*
 //****************
 
-async function setup({busSrcFile, buffer, NMOS, debuggerOnBRK})
+function setup({busSrcFile, buffer, NMOS, debuggerOnBRK})
 {
-	//Moved above since needed before receive message for setup
-	//self.addEventListener('message', OnMessage , false);
+	return new Promise(resolve => {
+		function onLoaded({default: Bus}) {
+			core.bus= new Bus(self, buffer);
+			NMOS_mode= NMOS;
+			core.debuggerOnBRK= debuggerOnBRK;
+			resolve();
+		};
 
-	//self.postMessage({cmd:"status",msg:"zeroing memory"});
-	//for (i=0;i<0x40000;i++) core.bus.read(i)=0;
-
-	const Bus= await import("/src/machines/" + busSrcFile).then(m=>m.default);
-	core.bus= new Bus(self, buffer);
-	NMOS_mode= NMOS;
-
-	core.debuggerOnBRK= debuggerOnBRK;
+		// this trickery because vitejs is not able to deal with dynamic variable imports
+		eval(`import("/src/machines/${busSrcFile}").then(onLoaded)`);
+	});
 
 /*
 	let record_bytes=0;

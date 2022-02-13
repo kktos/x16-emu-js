@@ -1042,7 +1042,7 @@ export let opcodes= [
 	opBBR1,				//0x1F
 	opJSR,				//0x20
 	opAND_IX,			//0x21
-	opNOP_IMMED,		//0x22
+	opNOP_IMMED,		//0x22 65816: JSL addr - jsr long
 	opNOP,				//0x23
 	opBIT_ZP,			//0x24
 	opAND_ZP,			//0x25
@@ -1100,7 +1100,7 @@ export let opcodes= [
 	opEOR_ADDRESSY,		//0x59
 	opPHY,				//0x5A
 	opNOP,				//0x5B
-	opNOP_ADDRESS,		//0x5C
+	opNOP_ADDRESS,		//0x5C 65816: JML addr - jmp long
 	opEOR_ADDRESSX,		//0x5D
 	opLSR_ADDRESSX,		//0x5E
 	opBBR5,				//0x5F
@@ -1202,7 +1202,7 @@ export let opcodes= [
 	opBBS3,				//0xBF
 	opCPY_IMMED,		//0xC0
 	opCMP_IX,			//0xC1
-	opNOP_IMMED,		//0xC2
+	opNOP_IMMED,		//0xC2 65816: REP #immed - reset status bits
 	opNOP,				//0xC3
 	opCPY_ZP,			//0xC4
 	opCMP_ZP,			//0xC5
@@ -1234,7 +1234,7 @@ export let opcodes= [
 	opBBS5,				//0xDF
 	opCPX_IMMED,		//0xE0
 	opSBC_IX,			//0xE1
-	opNOP_IMMED,		//0xE2
+	opNOP_IMMED,		//0xE2 65816: SEP #immed - set status bits
 	opNOP,				//0xE3
 	opCPX_ZP,			//0xE4
 	opSBC_ZP,			//0xE5

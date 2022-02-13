@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "main.js",
-  "_type": "module",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack --config webpack.prod.js",
-    "start": "webpack serve --open --config webpack.dev.js",
+    "dev": "vite -c ./config.vite.js",
+    "build": "vite build",
+    "serve": "vite preview",
     "asm:basic": "c:\\devtools\\cc65\\bin\\ca65.exe .\\tools\\basic\\strToHex.asm",
     "parse": "node tools/basic/test/main.mjs parser",
     "run": "node tools/basic/test/main.mjs run"
@@ -15,13 +15,6 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "css-loader": "^5.2.6",
-    "html-webpack-plugin": "^5.3.1",
-    "style-loader": "^2.0.0",
-    "webpack": "^5.38.1",
-    "webpack-cli": "^4.7.0",
-    "webpack-dev-server": "^3.11.2",
-    "webpack-merge": "^5.7.3"
-  },
-  "dependencies": {}
+    "vite": "^2.8.1"
+  }
 }

@@ -251,34 +251,48 @@ export default class Bus {
 				break;
 
 		}
-		console.log(
-			"READ",
-			addr.toString(16),
-			value.toString(16),
-			// "-- col80On",this.col80On,
-			// "-- store80On", this.store80On,
-			// "-- videoPage", this.videoPage
-		);
+		// console.log(
+		// 	"READ",
+		// 	addr.toString(16),
+		// 	value.toString(16),
+		// );
 		return value;
 	}
 
 	write(addr, value) {
-		addr= addr & 0xFFFF;
+		addr&= 0xFFFF;
+
+		if(addr >= 0xC100)
+			return;
 
 		if(addr<0xC000) {
-			if(addr>=0x0400 && addr<0x0800) {
+
+			if(addr < 0x0800 && addr >= 0x0400) {
 				const bank= this.store80On ? this.videoPage : this.writeBank;
-
-				// console.log("WRITEVID", bank.toString(16), addr.toString(16), value ? value.toString(16) : value);
-
 				this._write(bank, addr, value);
 				return;
 			}
+
 			this._write(this.writeBank, addr, value);
+
+			if(addr < 0x4000 && addr >= 0x2000) {
+				let partToUpdate;
+				if(addr < 0x2800)
+					partToUpdate= 0;
+				else if(addr < 0x3000)
+					partToUpdate= 1;
+				else if(addr < 0x3800)
+					partToUpdate= 2;
+				else if(addr < 0x4000)
+					partToUpdate= 3;
+
+				this.controller.postMessage({cmd:"video", data:{update: partToUpdate}});
+			}
+
 			return;
 		}
 
-		console.log("WRITE", addr.toString(16), value ? value.toString(16) : value);
+		// console.log("WRITE", addr.toString(16), value ? value.toString(16) : value);
 
 		switch(addr) {
 			case SWITCHES.RAMRDOFF:
@@ -332,7 +346,7 @@ export default class Bus {
 				break;
 
 		}
-		console.log("-- col80On",this.col80On, "-- store80On", this.store80On, "-- videoPage", this.videoPage);
+		// console.log("-- col80On",this.col80On, "-- store80On", this.store80On, "-- videoPage", this.videoPage);
 	}
 
 	writeHexa(bank, addr, hexString) {
@@ -355,7 +369,7 @@ export default class Bus {
 		if(!keyPressed)
 			return 0;
 
-		console.log(keyPressed);
+		// console.log(keyPressed);
 
 		this.keys.get(keyPressed[0]);
 		switch(keyPressed[0]) {

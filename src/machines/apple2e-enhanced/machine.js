@@ -1,6 +1,6 @@
-import Video from "./video.js";
-import ROM from "./rom-C000-FFFF";
 import HGR_IMG from "./hgr-img";
+import ROM from "./rom-C000-FFFF";
+import Video from "./video.js";
 
 /**
  *

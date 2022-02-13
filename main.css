@@ -1,0 +1,111 @@
+@font-face { font-family: PrintChar21; src: url("/assets/fonts/PrintChar21.ttf"); }
+@font-face { font-family: PRNumber3; src: url("/assets/fonts/PRNumber3.ttf"); }
+BODY {
+	font-family: PrintChar21;
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	margin: 0;
+	display: grid;
+	grid-auto-flow: column;
+	grid-template-columns: auto 1fr;
+	background-color: #353535;
+}
+#debugger {
+	background-color: #182e40e6;
+	color: #29f529;
+	font-size: 10px;
+	padding: 5px;
+	display: grid;
+	grid-template: " btns    btns    btns" 30px
+					"disasm registers mem " 150px
+					"disasm   stack   mem "/auto 80px auto;
+	grid-gap: 10px;
+	position: fixed;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	border: 1px solid white;
+}
+#screen {
+	width: 100%;;
+	height: 100%;;
+}
+#disasm {
+	grid-area: disasm;
+	display: grid;
+	grid-gap: 3px;
+	grid-template-columns: 350px;
+	grid-auto-rows: min-content;
+}
+#disasm .line {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+}
+#disasm .comment:before {
+	content: ";";
+}
+#btns {
+	grid-area: btns;
+	background-color: #ffffff;
+	display: grid;
+	grid-auto-flow: column;
+	align-items: center;
+	grid-auto-columns: min-content;
+	grid-gap: 0 14px;
+}
+.btn {
+	cursor: pointer;
+}
+.icn.btn {
+	width: 20px;
+}
+.btn.running.paused {
+	cursor: default;
+	opacity: .3;
+}
+.btn.running.play {
+	display: none;
+}
+.btn.pause:not(.running) {
+	display: none;
+}
+#registers {
+	grid-area: registers;
+	display: grid;
+	grid-template-rows: repeat(5,20px);
+	grid-template-columns: 30px auto;
+	grid-auto-rows: min-content;
+	justify-items: center;
+}
+.register {
+	cursor: pointer;
+}
+.p.register {
+	display: grid;
+	grid-auto-flow: column;
+	grid-column: span 2;
+	grid-gap: 2px;
+	padding: 7px;
+}
+#mem {
+	grid-area: mem;
+	display: grid;
+	grid-gap: 3px;
+	grid-auto-rows: min-content;
+}
+#stack {
+	grid-area: stack;
+}
+.selected {
+	color: white;
+}
+INPUT {
+	width: 40px;
+	text-align: right;
+}
+.label {
+	color: #000000;
+}

@@ -1,13 +1,10 @@
+import machine from "./machines/apple2e-enhanced/machine.js";
 import VM from "./vm.js";
 
 // import machine from "./machines/klaus-test-suite/machine.js";
 // import machine from "./machines/apple2-plus/machine.js";
-import machine from "./machines/apple2e-enhanced/machine.js";
 
-const canvas= document.getElementById("screen");
-
-const vm= new VM(canvas, machine);
-
+async function main() {
 
 /**
 CH          =     $24
@@ -79,4 +76,13 @@ text = *
 
 // vm.memWrite(0, 0x0300, "20 58 fc a9 aa 8d 80 7 8d 55 c0 8d 80 07 8d 54 c0 60");
 
-vm.start();
+	const canvas= document.getElementById("screen");
+	const vm= new VM(canvas, machine);
+
+	await vm.setup();
+
+	vm.start();
+
+}
+
+main();
