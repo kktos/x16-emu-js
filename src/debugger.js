@@ -1,3 +1,4 @@
+import { assemble, setup as assemblerInit } from "./6502assembler/6502assembler.js";
 import Disassembler from "./cpu/disassembler/disassembler.js";
 import * as utils from "./utils.js";
 
@@ -27,7 +28,7 @@ export default class Debugger {
 
 		this.setupUI();
 
-		assembler.setup();
+		assemblerInit();
 	}
 
 	setupUI() {
@@ -112,7 +113,8 @@ export default class Debugger {
 
 			case "asm": {
 				const src= document.getElementById("editor").innerText;
-				assembler.assemble(src)
+				console.clear();
+				assemble(src)
 						.then(code => this.storeInMem(code));
 				break;
 			}
