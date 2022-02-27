@@ -1,5 +1,5 @@
-import * as utils from "./utils.js";
 import Disassembler from "./cpu/disassembler/disassembler.js";
+import * as utils from "./utils.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
 // up to the target by counting all "common" instructions as a point. The highest-scoring run of
@@ -26,6 +26,8 @@ export default class Debugger {
 		this.dumpMemBank= 0;
 
 		this.setupUI();
+
+		assembler.setup();
 	}
 
 	setupUI() {
@@ -70,8 +72,55 @@ export default class Debugger {
 		}
 	}
 
-	onClickBtn(e) {
+	async handleDirectoryEntry( dirHandle, out ) {
+		for await (const entry of dirHandle.values()) {
+		  if (entry.kind === "file"){
+			const file = await entry.getFile();
+			out[ file.name ] = file;
+		  }
+		  if (entry.kind === "directory") {
+			const newOut = out[ entry.name ] = {};
+			await this.handleDirectoryEntry( entry, newOut );
+		  }
+		}
+	}
+
+	async onClickBtn(e) {
 		switch(e.target.id) {
+			case "asm-start": {
+				document.querySelector(".asm").style.visibility= "visible";
+				break;
+			}
+
+			case "asm-close": {
+				document.querySelector(".asm").style.visibility= "hidden";
+				break;
+			}
+
+			case "asm-open": {
+
+				const [fileHandle] = await showOpenFilePicker();
+				const file = await fileHandle.getFile();
+				document.getElementById("editor").innerText= await file.text();;
+
+				// const out = {};
+				// const dirHandle = await showDirectoryPicker();
+				// await this.handleDirectoryEntry( dirHandle, out );
+				// console.log( out );
+				break;
+			}
+
+			case "asm": {
+				const src= document.getElementById("editor").innerText;
+				assembler.assemble(src)
+						.then(code => this.storeInMem(code));
+				break;
+			}
+
+			case "reset":
+				this.vm.setup();
+				break;
+
 			case "play":
 				this.updateBtns(false);
 				setTimeout(() => this.vm.play(), 0);
@@ -101,6 +150,12 @@ export default class Debugger {
 		this.updateBtns(true);
 		this.vm.pause();
 		this.update();
+	}
+
+	storeInMem(data) {
+		data.forEach((value, addr) => {
+			this.memory[addr]= value;
+		});
 	}
 
 	updateBtns(isPaused) {

@@ -1,20 +1,3 @@
-import machine from "./machines/apple2e-enhanced/machine.js";
-import VM from "./vm.js";
-
-// import machine from "./machines/klaus-test-suite/machine.js";
-// import machine from "./machines/apple2-plus/machine.js";
-
-async function main() {
-	const canvas= document.getElementById("screen");
-	const vm= new VM(canvas, machine);
-	await vm.setup();
-	vm.start();
-}
-
-
-main();
-
-const src=`
 HOME EQU $FC58 ;CLEAR SCREEN
 INIT EQU $FB2F ;HOME CURSOR
 SPKR EQU $C030 ;SPEAKER CLICK OUTPUT
@@ -135,5 +118,3 @@ SEF14
 		.BYT $50,$09 ; ENGLISH HORN
 SEF15
 		.BYT $01,$64 ; TIME BOMB
-`;
-document.getElementById("editor").innerText= src;

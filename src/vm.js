@@ -6,7 +6,9 @@ import KeyMap from "./keymap.js";
 let lastTime,
 	acc,
 	inc= ENV.FPS,
-	msgcounter= 0;
+	msgcounter= 0,
+	speeds= [0,0],
+	speedIdx= 0;
 
 const OneMHz= 1_000_000 * ENV.FPS | 0;
 export default class VM {
@@ -24,15 +26,16 @@ export default class VM {
 
 			dt: inc,
 			tick: 0,
+			mhz: 0,
 
 			mouse: {x: 0, y: 0, down: false},
 			keys: new KeyMap(),
 		};
 
-		this.worker= new MyWorker();
+		this.cpuWorker= new MyWorker();
 		// this.worker= new Worker(new URL('./cpu/controller.mjs', import.meta.url));
 		// this.worker= new Worker('/js/cpu/controller.js');
-		this.worker.addEventListener('message', (e) => this.handleMessage(e.data), false);
+		this.cpuWorker.addEventListener('message', (e) => this.handleMessage(e.data), false);
 
 		this.memory= new SharedArrayBuffer(machine.memory.size);
 
@@ -48,6 +51,9 @@ export default class VM {
 		this.debugger= new Debugger(this, this.memory);
 
 		this.video= new machine.Video(this.memory, this);
+
+		this.sound= new machine.Sound(this.memory, this);
+
 		this.canvas.width= this.video.width;
 		this.canvas.height= this.video.height;
 		this.gc.viewport.ctx.imageSmoothingEnabled = false; // magic!
@@ -56,8 +62,10 @@ export default class VM {
 	}
 
 	async setup() {
+		await this.sound.setup();
+
 		await this.waitMessage("setup", {
-			buffer: this.memory,
+			memory: this.memory,
 			busSrcFile: this.machine.busSrcFile,
 			debuggerOnBRK: this.machine.debuggerOnBRK===false ? false : true,
 			NMOS_mode: true
@@ -92,15 +100,24 @@ export default class VM {
 		});
 	}
 
-	loop(dt= 0) {
+	async loop(dt= 0) {
 		acc+= (dt - lastTime) / 1000;
 		while(acc > inc) {
-			this.video.update(this.gc, this.cyclesPerFrame);
+			this.video.update(this.gc);
 			this.gc.tick++;
+			this.sound.doTick( await this.waitMessage("cycles").then(d=>d.data) );
 			acc-= inc;
 		}
 		lastTime= dt;
 		this.isRunning && requestAnimationFrame((dt)=> this.loop(dt));
+
+
+		this.waitMessage("mhz").then(d=>{
+			speedIdx= speedIdx+1 % speeds.length;
+			speeds[speedIdx]= d.data/1_000;
+			const avg= speeds.reduce((acc, cur)=>acc+cur, 0) / speeds.length;
+			this.gc.mhz= Math.round((avg + Number.EPSILON) * 100) / 100
+		});
 	}
 
 	handleMessage(msg) {
@@ -109,6 +126,9 @@ export default class VM {
 		switch(msg.cmd) {
 			case "video":
 				this.video.handleMessage(msg.data);
+				break;
+			case "sound":
+				this.sound.handleMessage(msg.data);
 				break;
 			case "stopped":
 				this.debugger.pause();
@@ -119,10 +139,10 @@ export default class VM {
 	waitMessage(cmd, data= null) {
 		const msgID= msgcounter++;
 		return new Promise(resolve => {
-			this.worker.postMessage({cmd, id: msgID, data});
-			const listener= this.worker.addEventListener('message', (e) => {
+			this.cpuWorker.postMessage({cmd, id: msgID, data});
+			const listener= this.cpuWorker.addEventListener('message', (e) => {
 				if(e.data.id==msgID) {
-					this.worker.removeEventListener('message', listener);
+					this.cpuWorker.removeEventListener('message', listener);
 					resolve(e.data);
 				}
 			});
@@ -130,7 +150,11 @@ export default class VM {
 	}
 
 	sendMessage(cmd, data= null) {
-		this.worker.postMessage({cmd, id: msgcounter++, data});
+		this.cpuWorker.postMessage({cmd, id: msgcounter++, data});
+	}
+
+	getCPUCycles() {
+		return this.waitMessage("cycles").then(msg => msg.data);
 	}
 
 	getCPUstate() {
@@ -142,7 +166,7 @@ export default class VM {
 	}
 
 	updateVideo() {
-		this.video.update(this.gc, this.cyclesPerFrame);
+		this.video.update(this.gc);
 	}
 
 	pause() {
@@ -159,15 +183,15 @@ export default class VM {
 	}
 
 	step() {
-		this.waitMessage("step").then(() => this.video.update(this.gc, this.cyclesPerFrame));
+		this.waitMessage("step").then(() => this.video.update(this.gc));
 	}
 
 	stepOut() {
-		this.sendMessage("stepOut").then(() => this.video.update(this.gc, this.cyclesPerFrame));
+		this.sendMessage("stepOut").then(() => this.video.update(this.gc));
 	}
 
 	stepOver() {
-		this.sendMessage("stepOver").then(() => this.video.update(this.gc, this.cyclesPerFrame));
+		this.sendMessage("stepOver").then(() => this.video.update(this.gc));
 	}
 
 	handleEvent(e) {
@@ -177,6 +201,7 @@ export default class VM {
 		switch(e.type) {
 			case "keyup":
 			case "keydown":
+				// console.log(e);
 				this.sendMessage(e.type, {key: e.key});
 				break;
 		}
@@ -185,9 +210,10 @@ export default class VM {
 
 	async start() {
 
+		const machine= document.getElementById("machine");
 		[
 			"keyup", "keydown",
-		].forEach(type=> window.addEventListener(type, this));
+		].forEach(type=> machine.addEventListener(type, this));
 
 		this.sendMessage("reset");
 

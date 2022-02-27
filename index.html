@@ -3,13 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-	<link rel="stylesheet" href="/main.css">
+	<link rel="stylesheet" href="/assets/main.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>65x02 Machine Emulator</title>
   </head>
   <body>
-
-	<canvas id="screen"></canvas>
+	<div contentEditable="true" id="machine">
+		<canvas id="screen"></canvas>
+	</div>
 	<div id="debugger">
 		<div id="mem"></div>
 		<div id="disasm"></div>
@@ -30,7 +31,7 @@
 			</div>
 		</div>
 		<div id="btns">
-			<div></div>
+			<div id="reset" class="btn">RESET</div>
 			<img id="play" class="icn btn play" src="/assets/icons/debug_play.svg" />
 			<img id="pause" class="icn btn pause" src="/assets/icons/debug_pause.svg" />
 			<img id="step_over" class="icn btn paused" src="/assets/icons/debug_step_over.svg" />
@@ -39,9 +40,22 @@
 			<div></div>
 			<input type="number" id="speed" value="1" step="0.1">
 			<div class="label">MHz</div>
+			<div id="asm-start" class="btn">ASSEMBLER</div>
+		</div>
+		<div class="asm">
+			<div id="btns">
+				<div></div>
+				<div id="asm-close" class="btn">BACK</div>
+				<div id="asm-open" class="btn">OPEN</div>
+				<div id="asm" class="btn">ASSEMBLE</div>
+			</div>
+			<div class="asm-src">
+				<pre id="editor" contenteditable="true"></pre>
+			</div>
 		</div>
 	</div>
-
+    <script src="/assets/6502assembler.js"></script>
     <script type="module" src="/src/main.js"></script>
+
   </body>
 </html>

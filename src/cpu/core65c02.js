@@ -15,7 +15,8 @@ export let core= {
 	cycle_count: 0,
 	calcAddress: -1,
 	running: 0,
-	debuggerOnBRK: true
+	debuggerOnBRK: true,
+	mhz: 0
 };
 
 let cycle_penalty= 0;

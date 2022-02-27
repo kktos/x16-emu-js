@@ -10,7 +10,7 @@ BODY {
 	margin: 0;
 	display: grid;
 	grid-auto-flow: column;
-	grid-template-columns: auto 1fr;
+	grid-template-columns: 1fr 1fr;
 	background-color: #353535;
 }
 #debugger {
@@ -23,11 +23,9 @@ BODY {
 					"disasm registers mem " 150px
 					"disasm   stack   mem "/auto 80px auto;
 	grid-gap: 10px;
-	position: fixed;
-	right: 0;
-	top: 0;
-	bottom: 0;
 	border: 1px solid white;
+	overflow: hidden;
+
 }
 #screen {
 	width: 100%;;
@@ -108,4 +106,33 @@ INPUT {
 }
 .label {
 	color: #000000;
+}
+.asm {
+	visibility: hidden;
+	grid-column: 1 / 4;
+    grid-row: 1 / 4;
+    background: black;
+    margin: 0;
+	display: grid;
+	grid-template:
+        "btns" 30px
+        "src"/auto;
+	z-index: 1;
+	position: relative;
+}
+#editor {
+	font-size: 1.5em;
+	margin-inline: 10px;
+}
+.asm-src {
+    grid-area: src;
+	position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+	overflow-y: scroll;
+}
+[contenteditable]:focus {
+    outline: 0px solid transparent;
 }

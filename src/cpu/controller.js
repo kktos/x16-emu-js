@@ -24,6 +24,10 @@ import { core, opcodes } from "./core65c02";
 //*GLOBAL VARIABLES*
 //******************
 
+const CYCLES_COUNT_FOR_1MHZ = 5000;
+let speedMHz = 1; //4.1MHz = 4.35; //2.5MHz(IIgs) = 2.65; //2MHz = 2.08;
+let cyclesCountForSpeed = speedMHz * CYCLES_COUNT_FOR_1MHZ;
+
 let loaded= 0;
 let NMOS_mode;
 let debugflag;
@@ -45,6 +49,7 @@ let stopAtjsrLevel= 0;
 let wannaStopOnRTS= false;
 
 self.addEventListener('message', OnMessage , false);
+self.core= core;
 
 
 //**********************************
@@ -56,7 +61,9 @@ function* cycle10_6()
 {
 	do
 	{
-		for(let i=0; i<100_000; i++)
+		const startCount= core.cycle_count;
+		// for(let i=0; i<17_030; i++)
+		while(core.cycle_count-startCount < cyclesCountForSpeed)
 			if(core.running) {
 				core.calcAddress= -1;
 				// if (cycleLogActivated) recordCycle();
@@ -95,10 +102,23 @@ function* cycle10_6()
 
 
 const cycleGen= cycle10_6();
+let startTime= performance.now();
+let deltaTime= 0;
 
 function cycleFunc()
 {
-	let obj= cycleGen.next();
+	const startCount= core.cycle_count;
+	const newTime= performance.now();
+	deltaTime= newTime - startTime;
+
+	const obj= cycleGen.next();
+
+	startTime= newTime;
+
+	const cycle_count= core.cycle_count - startCount;
+	if(deltaTime)
+		core.mhz= cycle_count / deltaTime;
+
 	if(!obj.done && core.running)
 		setTimeout(cycleFunc, 0);
 }
@@ -168,10 +188,6 @@ async function OnMessage({data:{cmd, id, data}})
 			dumpMem(data.addr);
 			break;
 
-		// case 'cycles':
-		// 	self.postMessage({cmd:"cycles",core.cycle_count});
-		// 	break;
-
 		case 'step':
 			step();
 			self.postMessage({cmd: "step", id: id });
@@ -233,6 +249,14 @@ async function OnMessage({data:{cmd, id, data}})
 			self.postMessage({cmd: "update", id: id, data: updateData });
 			break;
 		}
+
+		case 'cycles':
+			self.postMessage({cmd: "cycles", id: id, data: core.cycle_count});
+			break;
+
+		case 'mhz':
+			self.postMessage({cmd: "mhz", id: id, data: core.mhz});
+			break;
 
 		case 'run':
 			run();
@@ -314,11 +338,11 @@ function dumpMem(addr) {
 //*SETUP FUNCTION*
 //****************
 
-function setup({busSrcFile, buffer, NMOS, debuggerOnBRK})
+function setup({busSrcFile, memory, NMOS, debuggerOnBRK})
 {
 	return new Promise(resolve => {
 		function onLoaded({default: Bus}) {
-			core.bus= new Bus(self, buffer);
+			core.bus= new Bus(self, memory);
 			NMOS_mode= NMOS;
 			core.debuggerOnBRK= debuggerOnBRK;
 			resolve();

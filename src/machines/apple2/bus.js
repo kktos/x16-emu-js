@@ -122,9 +122,9 @@ const SWITCHES = {
 };
 
 export default class Bus {
-	constructor(controller, buffer) {
+	constructor(controller, memory) {
 		this.controller= controller;
-		this.ram= new Uint8Array(buffer);
+		this.ram= new Uint8Array(memory);
 		this.keyWasRead= false;
 		this.lastKeypressed= null;
 		this.keys= new KeyMap();
@@ -180,6 +180,10 @@ export default class Bus {
 				return this.readKeyboard();
 			case 0xC010:
 				this.keyWasRead= false;
+				return;
+
+			case 0xC030:
+				this.controller.postMessage({cmd:"sound", data:{mode: "tick", cycles: this.controller.core.cycle_count}});
 				return;
 
 			case SWITCHES.INTCXROM:

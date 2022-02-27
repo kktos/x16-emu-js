@@ -1,10 +1,11 @@
+import { HGR_LINES, TEXT_LINES } from "../ram_map.js";
+
 /*
+
 https://retrocomputing.stackexchange.com/questions/8652/why-did-the-original-apple-e-have-two-sets-of-inverse-video-characters
 
 apple 2 font : https://www.kreativekorp.com/software/fonts/apple2.shtml
 */
-import {TEXT_LINES, HGR_LINES} from "../ram_map.js";
-
 const MODE= {
 	TEXT: 0,
 	GR: 1,
@@ -616,7 +617,7 @@ export default class Video {
 
 	// }
 
-	update({tick, viewport:{ctx, canvas}}, cycles) {
+	update({tick, mhz, viewport:{ctx, canvas}}) {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
 
@@ -638,7 +639,10 @@ export default class Video {
 		const e = performance.now();
 		ctx.fillStyle="red";
 		ctx.font = '16px monospace';
-		ctx.fillText(`${(e - s).toFixed(2)}ms ${this.refreshCount}`, 10, canvas.height-10);
+		ctx.fillText(
+			`${(e - s).toFixed(2)}ms ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`,
+			10, canvas.height-10);
+
 
 		// ctx.fillStyle="#7777FF";
 		// ctx.font = '12px monospace';
