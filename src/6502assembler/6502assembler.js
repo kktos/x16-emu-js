@@ -6,7 +6,8 @@
 //       auto-zeropage addr. default, slightly modernized UI.
 import { getExpression, getIdentifier } from "./expression.js";
 import { ET_C, ET_P, ET_S, logError, logLine } from "./log.js";
-import { processPragma } from "./pragma.js";
+import { processPragma, resolveAliases } from "./pragma.js";
+import { encodeAscii } from "./pragmas/string.js";
 import { getSym, nextSyms } from "./symbol.js";
 import { instrIllegals, instrLegals, instrSynonyms, steptab } from "./tables.js";
 import { commentChar, compile, getHexByte, getHexWord, hexPrefix, pcSymbol } from "./utils.js";
@@ -19,7 +20,7 @@ export let symtab;
 let optAutoZpg, showCodeAddresses=true,
 	instrAll, useIllegals=false, codeStore,
 	bbcMode=false, redefSyms=false,
-	bbcBlock=false, isHead, cbmStartAddr, anonymousTargets;
+	bbcBlock=false, isHead, anonymousTargets;
 
 let ctx= {
 	rawLine: null,
@@ -32,8 +33,9 @@ let ctx= {
 	codeStart: null,
 	codeEnd: null,
 	pc: null,
+	cbmStartAddr: 0,
 
-	charEncoding: null,
+	charEncoding: encodeAscii,
 	convertPi: null,
 
 	pass: null,
@@ -50,6 +52,9 @@ let ctx= {
 	labelStr: null,
 	listing: "",
 	comment: "",
+	pageHead: "",
+	pageCnt: 1,
+
 	repeatInterval: null,
 	repeatSym: null,
 	repeatLine: null,
@@ -71,7 +76,7 @@ export function assemble(src) {
 	return new Promise(resolve => {
 		setTimeout(() => {
 			startAssembly(src);
-			resolve(ctx.code);
+			resolve({code: ctx.code, start: ctx.codeStart, end: ctx.codeEnd});
 		}, 0);
 	});
 }
@@ -109,8 +114,8 @@ function startAssembly(src) {
 	ctx.codeStart=0x10000;
 	ctx.codeEnd=0;
 	ctx.pass=1;
+	ctx.cbmStartAddr= 0;
 
-	cbmStartAddr=0;
 	let pass1= asmPass(ctx);
 
 	if (pass1) {
@@ -148,10 +153,10 @@ function startAssembly(src) {
 	}
 }
 
-function listCode() {
+export function listCode() {
 	var s='',
 		ofs=showCodeAddresses? ctx.codeStart%8:0,
-		fillbyte=bbcMode? 0xff:0;
+		fillbyte= 0;
 	if (ctx.code.length) {
 		for (var i= ctx.codeStart-ofs; i<=ctx.codeEnd; i++) {
 			if (i%8==0) {
@@ -166,10 +171,10 @@ function listCode() {
 			}
 		}
 	}
-	storeCode(ctx.codeStart,s, cbmStartAddr||ctx.codeStart);
+	storeCode(ctx.codeStart,s, ctx.cbmStartAddr||ctx.codeStart);
 
-	console.log("---- HEXDUMP");
-	console.log({codeStart:ctx.codeStart, codeEnd:ctx.codeEnd, code:ctx.code});
+	// console.log("---- HEXDUMP");
+	// console.log({codeStart:ctx.codeStart, codeEnd:ctx.codeEnd, code:ctx.code});
 	console.log(s);
 	// document.getElementById('codefield').value=s;
 	// document.getElementById('codeLink').className= code.length? 'visible':'';
@@ -222,9 +227,10 @@ function asmPass(ctx) {
 		expressionStartChars = "$%@&'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_*-<>[].",
 		// labelStartChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ_',
 		operatorChars = "+-*/",
-		pageHead='',
-		pageCnt=1,
 		lastDlrPpct=-1;
+
+	ctx.pageCnt= 1;
+	ctx.pageHead= '';
 
 	if (ctx.pass==1) anonymousTargets=[];
 
@@ -419,40 +425,6 @@ function asmPass(ctx) {
 		return { 'pict': pict, 'v': result,'error': false, 'idx': i };
 	}
 
-
-	function parsePragma(pragma) {
-
-		// const PRAGMA_IGNORED= [
-		// 	"XREF",
-		// 	"NOXREF",
-		// 	"COUNT",
-		// 	"NOCOUNT",
-		// 	"CNT",
-		// 	"NOCNT",
-		// 	"LIST",
-		// 	"NOLIST",
-		// 	"MEMORY",
-		// 	"NOMEMORY",
-		// 	"GENERATE",
-		// 	"NOGENERATE",
-		// 	"NOGENERA",
-		// ];
-
-		if(["BYTE","BYT"].includes(pragma))
-			pragma= "DB";
-
-		if(["WORD","DBYTE","DBYT"].includes(pragma))
-			pragma= "DW";
-
-		if(["RORG","*"].includes(pragma))
-			pragma= "ORG";
-
-		// if(PRAGMA_IGNORED.includes(pragma))
-		// 	pragma= "IGNORED";
-
-		return pragma;
-	}
-
 	bbcBlock= ctx.convertPi= false;
 	ctx.srcl= ctx.srcc= ctx.pc= ctx.srcLnNo= 0;
 	isHead= true;
@@ -474,7 +446,7 @@ function asmPass(ctx) {
 					else {
 						ctx.listing+='                   '+ctx.comment+'\n';
 					}
-					if (!pageHead) pageHead= ctx.comment;
+					if (!ctx.pageHead) ctx.pageHead= ctx.comment;
 					headComments=true;
 				}
 				else logLine(ctx);
@@ -496,7 +468,7 @@ function asmPass(ctx) {
 		ctx.ofs= 0;
 		if (c0=='.') {
 			ctx.pict+='.';
-			pragma= parsePragma(ctx.sym[0].substring(1));
+			pragma= resolveAliases(ctx.sym[0].substring(1));
 			if (!pragma) {
 				logError(ctx, ET_S,'pragma expected');
 				return false;

@@ -14,8 +14,10 @@ export function getHexWord(v) {
 }
 
 export function compile(ctx, addr, b) {
-	addr&=0xffff;
-	ctx.code[addr]=b;
-	if (addr<ctx.codeStart) ctx.codeStart=addr;
-	if (addr>ctx.codeEnd) ctx.codeEnd=addr;
+	addr&= 0xffff;
+	ctx.code[addr]= b;
+	if(addr<ctx.codeStart)
+		ctx.codeStart= addr;
+	if(addr>ctx.codeEnd)
+		ctx.codeEnd= addr;
 }

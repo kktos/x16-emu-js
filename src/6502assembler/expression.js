@@ -1,7 +1,7 @@
 import { instrtab, symtab } from "./6502assembler.js";
 import { ET_C, ET_P, ET_S } from "./log.js";
 
-function getNumber(s, fromIdx, doubleWord) {
+function getNumber(ctx, s, fromIdx, doubleWord) {
 	let c0= s.charAt(fromIdx),
 		size= doubleWord? 0xffffffff:0xffff;
 
@@ -44,11 +44,10 @@ function getNumber(s, fromIdx, doubleWord) {
 			// let quote=c0;
 			if (fromIdx<s.length) {
 				let v=s.charCodeAt(fromIdx);
-				if (bbcMode && v==0xA3) v=0x60; //£
-				else if (convertPi && v==0x03C0) v=0xff; //CBM pi
+				if (ctx.convertPi && v==0x03C0) v=0xff; //CBM pi
 				if (v>0xff) return {'v': v, 'idx': fromIdx, 'error': true, 'et': ET_P};
 				fromIdx++;
-				return {'v': charEncoding(v), 'idx': fromIdx, 'error': false};
+				return {'v': ctx.charEncoding(v), 'idx': fromIdx, 'error': false};
 			}
 			return {'v': -1, 'idx': fromIdx, 'error': true};
 		}
@@ -185,7 +184,7 @@ export function getIdentifier(s, fromIdx, stripColon) {
 }
 
 export function getExpression(ctx, s, pc, doubleWord) {
-	let idx=0, c, v, r, state=0, max=s.length, root=[], stack=root, parent=[], pict='', last='', lvl=0;
+	let idx=0, c, r, state=0, max=s.length, root=[], stack=root, parent=[], pict='', last='', lvl=0;
 		// size=doubleWord? 0xffffffff:0xffff;
 
 	function state0() {
@@ -225,7 +224,7 @@ export function getExpression(ctx, s, pc, doubleWord) {
 
 	function state1() {
 		if (c=='$' || c=='%' || c=='@' || c=='&' || (c>='0' && c<='9') || c=='\'') {
-			r= getNumber(s, idx, doubleWord);
+			r= getNumber(ctx, s, idx, doubleWord);
 			let ns=(r.lc && r.lc>0)?
 				s.substring(idx, r.lc)+s.charAt(r.lc).toLowerCase()+s.substring(r.lc+1, r.idx):
 				s.substring(idx, r.idx);
@@ -242,25 +241,25 @@ export function getExpression(ctx, s, pc, doubleWord) {
 		}
 		else if ((c>='A' && c<='Z') || c=='_') {
 			if (c=='P' && idx+1<max && s.charAt(idx+1)=='%') {
-				pict+='P%';
+				pict+= 'P%';
 				stack.push({'type': 'num', 'v': pc});
-				idx+=2;
-				last='';
+				idx+= 2;
+				last= '';
 			}
 			else if (c=='R' && idx+1<max && s.charAt(idx+1)=='%') {
-				pict+='R%';
-				stack.push({'type': 'num', 'v': repeatCntr*repeatStep});
+				pict+= 'R%';
+				stack.push({'type': 'num', 'v': ctx.repeatCntr * ctx.repeatStep});
 				idx+=2;
-				last='';
+				last= '';
 			}
 			else {
-				r=getIdentifier(s, idx);
+				r= getIdentifier(s, idx);
 				pict+=r.v;
 				if (instrtab[r.v]) return {'v': -1, 'pict': pict, 'error': 'illegal identifier (opcode '+r.v+')', 'et': ET_P};
 				if (ctx.pass==2 && typeof symtab[r.v] == 'undefined') return { 'v': -1, 'pict': pict, 'error': 'undefined symbol', 'undef': r.v, 'et': ET_C };
 				stack.push({'type': 'ident', 'v': r.v});
-				idx=r.idx;
-				last='name character';
+				idx= r.idx;
+				last= 'name character';
 			}
 		}
 		else if (c=='.') {
@@ -293,7 +292,7 @@ export function getExpression(ctx, s, pc, doubleWord) {
 	}
 
 	function state2() {
-		pict+=c;
+		pict+= c;
 		if (c=='+' || c=='-' || c=='*' || c=='/') {
 			stack.push({'type': 'op', 'v': c});
 			idx++;

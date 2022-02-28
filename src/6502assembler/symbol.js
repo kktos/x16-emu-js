@@ -111,9 +111,10 @@ export function nextSyms(ctx) {
 			ctx.repeatInterval= ctx.repeatStep= ctx.repeatCntr=0;
 		}
 		else {
-			ctx.sym=[];
-			for (let i=0; i<ctx.repeatSym.length; i++) ctx.sym.push(ctx.repeatSym[i]);
-			rawLine= ctx.repeatLine;
+			ctx.sym= [];
+			for(let i=0; i<ctx.repeatSym.length; i++)
+				ctx.sym.push(ctx.repeatSym[i]);
+			ctx.rawLine= ctx.repeatLine;
 			return;
 		}
 	}
