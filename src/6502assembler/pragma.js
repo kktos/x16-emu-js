@@ -1,33 +1,35 @@
-import { ET_S, logError, logLine } from "./log.js";
-import { processAlign } from "./pragmas/align.js";
-import { c64Start } from "./pragmas/c64Start.js";
-import { hex, processData } from "./pragmas/data.js";
-import { processOption } from "./pragmas/option.js";
-import { processOrg } from "./pragmas/org.js";
-import { processRepeat } from "./pragmas/repeat.js";
-import { processString } from "./pragmas/string.js";
-import { nextSyms } from "./symbol.js";
-import { commentChar } from "./utils.js";
+import { ET_S, logError } from "./log.js";
+import { processAlign } from "./pragmas/align.pragma.js";
+import { c64Start } from "./pragmas/c64start.pragma.js";
+import { hex, processData } from "./pragmas/data.pragma.js";
+import { processIf } from "./pragmas/if.pragma.js";
+import { processInclude } from "./pragmas/include.pragma.js";
+import { processMacro } from "./pragmas/macro.pragma.js";
+import { ignorePragma, processEnd, processPage } from "./pragmas/misc.pragma.js";
+import { processOption } from "./pragmas/option.pragma.js";
+import { processOrg } from "./pragmas/org.pragma.js";
+import { processASMOuput } from "./pragmas/out.pragma.js";
+import { processRepeat } from "./pragmas/repeat.pragma.js";
+import { processSetCPU } from "./pragmas/setcpu.pragma.js";
+import { processText } from "./pragmas/string.pragma.js";
+import { nextLine } from "./symbol.js";
 
-export function resolveAliases(pragma) {
+export function parsePragma(pragma) {
 
-	// const PRAGMA_IGNORED= [
-	// 	"XREF",
-	// 	"NOXREF",
-	// 	"COUNT",
-	// 	"NOCOUNT",
-	// 	"CNT",
-	// 	"NOCNT",
-	// 	"LIST",
-	// 	"NOLIST",
-	// 	"MEMORY",
-	// 	"NOMEMORY",
-	// 	"GENERATE",
-	// 	"NOGENERATE",
-	// 	"NOGENERA",
-	// ];
+	// console.log("parsePragma", pragma);
 
-	switch(pragma) {
+	const cmd= pragma.replace(/^\./,"");
+	switch(cmd) {
+
+		case "SRC":
+		case "SOURCE":
+			return "INCLUDE";
+
+		case "PROCESSOR":
+			return "SETCPU";
+
+		case "RES":
+			return "FILL";
 
 		case "BYTE":
 		case "BYT":
@@ -50,6 +52,7 @@ export function resolveAliases(pragma) {
 		case "STR":
 			return "TEXT";
 
+		case "ASCIIZ":
 		case "CSTR":
 			return "CSTRING";
 
@@ -57,99 +60,54 @@ export function resolveAliases(pragma) {
 			return "PSTRING";
 
 		default:
-			return pragma;
+			return pragma[0] == "." ? cmd : null;
 	}
-
-
-	// if(PRAGMA_IGNORED.includes(pragma))
-	// 	pragma= "IGNORED";
 
 }
 
-export function processPragma(pragma, ctx) {
-	switch(pragma) {
+function addPragmaDef(handlerFn, isBlock, pragmaNames) {
+	pragmaNames.forEach(pragma => {
+		pragmaDefs[pragma]= {handlerFn, isBlock};
+	});
+}
 
-		case "PETSTART":
-		case "C64START":
-			return c64Start(ctx, pragma) ? null : false;
+const pragmaDefs= {};
+addPragmaDef(processIf		,  true, ["IF"]);
+addPragmaDef(processMacro	,  true, ["MACRO"]);
+addPragmaDef(processRepeat	,  true, ["REPEAT"]);
 
-		case "ORG":
-			return processOrg(ctx, pragma) ? null : false;
+addPragmaDef(processEnd		, false, ["END"]);
+addPragmaDef(processASMOuput, false, ["OUT", "WARNING", "ERROR"]);
+addPragmaDef(processSetCPU	, false, ["SETCPU"]);
+addPragmaDef(processOption	, false, ["OPT"]);
+addPragmaDef(c64Start		, false, ["PETSTART", "C64START"]);
+addPragmaDef(processOrg		, false, ["ORG"]);
+addPragmaDef(processAlign	, false, ["ALIGN", "FILL"]);
+addPragmaDef(ignorePragma	, false, ["DATA"]);
+addPragmaDef(processPage	, false, ["PAGE", "SKIP"]);
+addPragmaDef(processText	, false, ["TEXT", "ASCII", "PETSCII", "PETSCR", "C64SCR", "CSTRING", "PSTRING"]);
+addPragmaDef(hex			, false, ["HEX"]);
+addPragmaDef(processData	, false, ["DB", "DW", "DL", "DBYTE", "DWORD"]);
+addPragmaDef(processInclude	, false, ["INCLUDE"]);
 
-		case "END":
-			ctx.pict+=pragma;
-			logLine(ctx);
-			return true;
+export function isPragmaBlock(pragma) {
+	return pragmaDefs[pragma] ? pragmaDefs[pragma].isBlock : false;
+}
 
-		case "OPT":
-			return processOption(ctx, pragma) ? null : false;
+export function processPragma(ctx, pragma) {
 
-
-		case "FILL":
-		case "ALIGN":
-			return processAlign(ctx, pragma) ? null : false;
-
-		case "DATA":
-			if (ctx.pass==1) {
-				ctx.pict+=ctx.sym.join(' ');
-				labelStr='-ignored';
-				logLine(ctx);
-			}
-			nextSyms(ctx);
-			return null;
-
-		case "REPEAT":
-			return processRepeat(ctx, pragma) ? null : false;
-
-		case "SKIP":
-		case "PAGE":
-			if (ctx.pass==1) {
-				ctx.pict+= pragma;
-				logLine(ctx);
-			}
-			else {
-				if(ctx.comment)
-					logLine(ctx);
-				else ctx.listing+='\n';
-				if(pragma=='PAGE') {
-					ctx.listing+='                   '+(ctx.pageHead||commentChar+'page')+'  ';
-					ctx.listing+='('+(++ctx.pageCnt)+')\n\n';
-				}
-			}
-			nextSyms(ctx);
-			return null;
-
-		case "TEXT":
-		case "ASCII":
-		case "PETSCII":
-		case "PETSCR":
-		case "C64SCR":
-		case "CSTRING":
-		case "PSTRING":
-			return processString(ctx, pragma) ? null : false;
-
-		case "HEX":
-			return hex(ctx) ? null : false;
-
-		case "DB":
-			return processData(ctx, pragma, 1) ? null : false;
-
-		case "DW":
-			return processData(ctx, pragma, 2) ? null : false;
-
-		case "DL":
-			return processData(ctx, pragma, 4) ? null : false;
-
-		case "DBYTE":
-			return processData(ctx, pragma, -2) ? null : false;
-
-		case "DWORD":
-			return processData(ctx, pragma, -4) ? null : false;
-
-		default:
-			ctx.pict+=pragma;
-			logError(ctx, ET_S,'invalid pragma');
-			return false;
-
+	const pragmaDef= pragmaDefs[pragma];
+	if(!pragmaDef) {
+		ctx.pict+= pragma;
+		logError(ctx, ET_S,'invalid pragma');
+		return false;
 	}
+
+	ctx.ofs++;
+	const isOK= pragmaDef.handlerFn(ctx, pragma);
+	if(!isOK)
+		return false;
+
+	nextLine(ctx);
+	return null;
 }

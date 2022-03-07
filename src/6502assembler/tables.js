@@ -1,6 +1,6 @@
 // lookup tables
 
-export const instrLegals = {
+const op6502 = {
 	'ADC': [  -1,  -1,0x69,0x6d,0x7d,0x79,0x65,0x75,  -1,  -1,0x61,0x71,  -1],
 	'AND': [  -1,  -1,0x29,0x2d,0x3d,0x39,0x25,0x35,  -1,  -1,0x21,0x31,  -1],
 	'ASL': [  -1,0x0a,  -1,0x0e,0x1e,  -1,0x06,0x16,  -1,  -1,  -1,  -1,  -1],
@@ -59,7 +59,7 @@ export const instrLegals = {
 	'TYA': [0x98,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1]
 };
 
-export const instrIllegals = {
+const op65x02 = {
 	'ALR': [  -1,  -1,0x4b,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
 	'ANC': [  -1,  -1,0x0b,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
 	'ANC2':[  -1,  -1,0x2b,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
@@ -87,7 +87,57 @@ export const instrIllegals = {
 	'TOP': [  -1,  -1,  -1,0x0c,0x1c,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1]
 };
 
-export const instrSynonyms = {
+const op65c02 = {
+	'BRA': [  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,0x80],
+	'STZ': [  -1,  -1,  -1,0x9c,0x9E,  -1,0x64,0x74,  -1,  -1,  -1,  -1,  -1],
+
+	'PHX': [0xDA,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
+	'PLX': [0xFA,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
+	'PHY': [0x5A,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
+	'PLY': [0x7A,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
+
+	'TRB': [  -1,  -1,  -1,0x1c,  -1,  -1,0x14,  -1,  -1,  -1,  -1,  -1,  -1],
+	'TSB': [  -1,  -1,  -1,0x0c,  -1,  -1,0x04,  -1,  -1,  -1,  -1,  -1,  -1],
+
+	'BBR': [  -1,  -1,  -1,  -1,  -1,  -1,0x00,  -1,  -1,  -1,  -1,  -1,  -1],
+	'BBS': [  -1,  -1,  -1,  -1,  -1,  -1,0x00,  -1,  -1,  -1,  -1,  -1,  -1],
+	'RMB': [  -1,  -1,  -1,  -1,  -1,  -1,0x00,  -1,  -1,  -1,  -1,  -1,  -1],
+	'SMB': [  -1,  -1,  -1,  -1,  -1,  -1,0x00,  -1,  -1,  -1,  -1,  -1,  -1],
+
+	'INA': [0x1a,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
+	'DEA': [0x3a,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1],
+
+	'BIT': [  -1,  -1,0x89,0x2c,0x3c,  -1,0x24,0x34,  -1,  -1,  -1,  -1,  -1],
+
+	'ADC': [  -1,  -1,0x69,0x6d,0x7d,0x79,0x65,0x75,  -1,0x72,0x61,0x71,  -1],
+	'AND': [  -1,  -1,0x29,0x2d,0x3d,0x39,0x25,0x35,  -1,0x32,0x21,0x31,  -1],
+	'CMP': [  -1,  -1,0xc9,0xcd,0xdd,0xd9,0xc5,0xd5,  -1,0xd2,0xc1,0xd1,  -1],
+	'EOR': [  -1,  -1,0x49,0x4d,0x5d,0x59,0x45,0x55,  -1,0x52,0x41,0x51,  -1],
+	'ORA': [  -1,  -1,0x09,0x0d,0x1d,0x19,0x05,0x15,  -1,0x12,0x01,0x11,  -1],
+	'SBC': [  -1,  -1,0xe9,0xed,0xfd,0xf9,0xe5,0xf5,  -1,0xf2,0xe1,0xf1,  -1],
+	'STA': [  -1,  -1,  -1,0x8d,0x9d,0x99,0x85,0x95,  -1,0x92,0x81,0x91,  -1],
+	'LDA': [  -1,  -1,0xa9,0xad,0xbd,0xb9,0xa5,0xb5,  -1,0xb2,0xa1,0xb1,  -1],
+
+	'JMP': [  -1,  -1,  -1,0x4c,  -1,  -1,  -1,  -1,  -1,0x6c,  -1,  -1,  -1,0x7c],
+
+};
+
+/*
+	BBR, BBS, RMB, SMB
+	Rockwell added these first, for their microcontrollers that had I/O in ZP.  WDC added them in
+	the early 1990's.  The Aug '92 data sheet shows the W65C02S available without them, and
+	the W65C02SB with them, but said eventually they would all have them, and be labeled
+	W65C02S, without the B.  By the July '96 data sheet, these instructions were standard
+	in all of them.
+*/
+const op65c02s = {
+	// BBR  ZP       0F-7F [1]   Branch if specified Bit is Reset. ‾⌉ These are most useful
+	// BBS  ZP       8F-FF [1]   Branch if specified Bit is Set.    | when I/O is in ZP.  They
+	// RMB  ZP       07-77 [1]   Reset specified Memory Bit.        | are on WDC & Rockwell but
+	// SMB  ZP       87-F7 [1]   Set specified Memory Bit.         _⌋ not GTE/CMD or Synertek.
+};
+
+const instrSynonyms = {
 	'ASO': 'SLO',
 	'LSE': 'SRE',
 	'AXS': 'SAX',
@@ -112,20 +162,33 @@ export const instrSynonyms = {
 	'SKW': 'TOP'
 };
 
-export const steptab = [1,1,2,3,3,3,2,2,2,3,2,2,2];
+export const steptab = [1,1,2,3,3,3,2,2,2,3,2,2,2,3];
 
-// const addrtab = {
-// 	'imp':0,
-// 	'acc':1,
-// 	'imm':2,
-// 	'abs':3,
-// 	'abx':4,
-// 	'aby':5,
-// 	'zpg':6,
-// 	'zpx':7,
-// 	'zpy':8,
-// 	'ind':9,
-// 	'inx':10,
-// 	'iny':11,
-// 	'rel':12
-// };
+export const ADDRMODE = {
+	"IMP": 0,
+	"ACC": 1,
+	"IMM": 2,
+	"ABS": 3,
+	"ABX": 4,
+	"ABY": 5,
+	"ZPG": 6,
+	"ZPX": 7,
+	"ZPY": 8,
+	"IND": 9,
+	"INX": 10,
+	"INY": 11,
+	"REL": 12,
+
+	// 65c02
+	"ABINX": 13
+};
+
+export const cpu6502= {
+	opcodes: op6502
+};
+export const cpu65x02= {
+	opcodes: {...op6502, ...op65x02}
+};
+export const cpu65c02= {
+	opcodes: { ...op6502, ...op65c02 }
+};

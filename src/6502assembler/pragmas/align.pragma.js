@@ -1,6 +1,5 @@
 import { getExpression } from "../expression.js";
 import { ET_P, ET_S, logError, logLine } from "../log.js";
-import { nextSyms } from "../symbol.js";
 import { getHexByte, getHexWord, hexPrefix } from "../utils.js";
 
 function fill(ctx, addr, b) {
@@ -29,19 +28,32 @@ export function processAlign(ctx, pragma) {
 		delta;
 
 	ctx.pict+= pragma;
-	if (ctx.sym.length>ctx.ofs+1) {
+	if(ctx.sym.length > ctx.ofs) {
 		ctx.pict+=' ';
-		let r= getExpression(ctx, ctx.sym[++ctx.ofs], ctx.pc);
+
+		// console.log(1, { ofs:ctx.ofs, sym: ctx.sym});
+
+		let r= getExpression(ctx, ctx.sym[ctx.ofs++]);
 		if (r.error) {
 			ctx.pict+=r.pict;
 			logError(ctx, r.et||ET_P, r.error);
 			return false;
 		}
-		pcOffset=r.v&0xffff;
-		ctx.pict+=ctx.pass==1?r.pict:hexPrefix+(r.v<0x100? getHexByte(pcOffset):getHexWord(pcOffset));
-		if (ctx.sym.length>ctx.ofs+1) { // fill-byte
+
+		// console.log(10, {sym: ctx.sym[ctx.ofs], ofs:ctx.ofs, len:ctx.sym.length});
+
+		pcOffset= r.v&0xffff;
+		ctx.pict+= ctx.pass==1 ?
+					r.pict
+					:
+					hexPrefix+(r.v<0x100 ? getHexByte(pcOffset) : getHexWord(pcOffset));
+
+		if(ctx.sym.length > ctx.ofs) { // fill-byte
 			ctx.pict+=' ';
-			let r=getExpression(ctx, ctx.sym[++ctx.ofs], ctx.pc);
+
+			// console.log(2, {sym: ctx.sym[ctx.ofs]});
+
+			let r= getExpression(ctx, ctx.sym[ctx.ofs++]);
 			if (r.error) {
 				ctx.pict+=r.pict;
 				logError(ctx, r.et||ET_P, r.error);
@@ -80,6 +92,6 @@ export function processAlign(ctx, pragma) {
 	}
 	ctx.addrStr= getHexWord(ctx.pc);
 	logLine(ctx);
-	nextSyms(ctx);
+
 	return true;
 }

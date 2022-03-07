@@ -1,41 +1,42 @@
 import { ET_C, ET_P, ET_S, logError, logLine } from "../log.js";
-import { nextSyms } from "../symbol.js";
 import { compile, getHexByte, getHexWord } from "../utils.js";
+import { encodePetscii } from "./string.pragma.js";
 
 export function c64Start(ctx, pragma) {
+
 	if (ctx.code.length) {
 		logError(ctx, ET_C, '".'+pragma+'" must be the first instruction.');
 		return false;
 	}
-	let basicLineNo='',
-		remText='',
+
+	let basicLineNo= '',
+		remText= '',
 		// lineLengthMax=88,
-		lineNumberMax='63999',
-		basicAddr=pragma=='PETSTART'? 0x0401:0x0801,
-		rem=[],
-		linkAddr,
-		ofs=1;
+		lineNumberMax= '63999',
+		basicAddr= pragma=='PETSTART'? 0x0401:0x0801,
+		rem= [],
+		linkAddr;
 
 	ctx.pc= basicAddr;
 	ctx.addrStr= getHexWord(ctx.pc);
 	ctx.pict= '.'+pragma;
-	if (ctx.sym[1] && (/^[0-9]+$/).test(ctx.sym[1])) {
-		basicLineNo=ctx.sym[1];
-		ofs++;
-		ctx.pict+=' '+basicLineNo;
+	if (ctx.sym[ctx.ofs] && (/^[0-9]+$/).test(ctx.sym[ctx.ofs])) {
+		basicLineNo= ctx.sym[ctx.ofs];
+		ctx.ofs++;
+		ctx.pict+= ' '+basicLineNo;
 	}
-	if (ctx.sym[ofs] && ctx.sym[ofs].charAt(0)!='"') {
-		ctx.pict+=' '+ctx.sym[ofs].charAt(0);
+	if (ctx.sym[ctx.ofs] && ctx.sym[ctx.ofs].charAt(0)!='"') {
+		ctx.pict+=' '+ctx.sym[ctx.ofs].charAt(0);
 		logError(ctx, ET_S, basicLineNo? 'string expected':'line number or string expected');
 		return false;
 	}
-	while (ctx.sym[ofs]) {
-		remText+=ctx.sym[ofs++].replace(/^"/,'').replace(/"\s*,?$/,'').replace(/","/g, '\\n');
-		if (ctx.sym[ofs]==',') ofs++;
-		if (ctx.sym[ofs]) {
-			ctx.sym[ofs]=ctx.sym[ofs].replace(/^,\s*/,'');
-			if (ctx.sym[ofs].charAt(0)!='"') {
-				ctx.pict+=' "'+remText.replace(/\\n/g, '", "')+'", '+ctx.sym[ofs].charAt(0);
+	while (ctx.sym[ctx.ofs]) {
+		remText+=ctx.sym[ctx.ofs++].replace(/^"/,'').replace(/"\s*,?$/,'').replace(/","/g, '\\n');
+		if (ctx.sym[ctx.ofs]==',') ctx.ofs++;
+		if (ctx.sym[ctx.ofs]) {
+			ctx.sym[ctx.ofs]=ctx.sym[ctx.ofs].replace(/^,\s*/,'');
+			if (ctx.sym[ctx.ofs].charAt(0)!='"') {
+				ctx.pict+=' "'+remText.replace(/\\n/g, '", "')+'", '+ctx.sym[ctx.ofs].charAt(0);
 				logError(ctx, ET_S,'string expected');
 				return false;
 			}
@@ -191,6 +192,6 @@ export function c64Start(ctx, pragma) {
 	ctx.pc= ctx.cbmStartAddr;
 	if (ctx.pass==2)
 		ctx.listing+='>>>>  START OF ASSEMBLY AT $'+getHexWord(ctx.pc)+' ("SYS '+ctx.cbmStartAddr+'")\n';
-	nextSyms(ctx);
+
 	return true;
 }

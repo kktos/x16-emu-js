@@ -14,7 +14,7 @@ export function logError(ctx, e, message, isWarning) {
 		if (ctx.asm.length<ctx.asmSpace.length) s+= ctx.asmSpace.substr(ctx.asm.length);
 	}
 	else {
-		ctx.srcLnStr=''+ctx.srcLnNo;
+		ctx.srcLnStr=''+ctx.srcLineNumber;
 		while (ctx.srcLnStr.length<4) ctx.srcLnStr=' '+ctx.srcLnStr;
 		s=ctx.srcLnStr+'  '+ctx.addrStr+ctx.pass1Spc;
 	}
@@ -38,7 +38,7 @@ export function logError(ctx, e, message, isWarning) {
 	ctx.anonMark='';
 }
 
-export function logLine(ctx) {
+export function logLine(ctx, wantCleanLine) {
 	var s;
 	while (ctx.addrStr.length<6) ctx.addrStr+=' ';
 	if (ctx.pass==2) {
@@ -47,13 +47,17 @@ export function logLine(ctx) {
 			s+= ctx.asmSpace.substr(ctx.asm.length);
 	}
 	else {
-		ctx.srcLnStr=''+ctx.srcLnNo;
+		ctx.srcLnStr=''+ctx.srcLineNumber;
 		while (ctx.srcLnStr.length<4) ctx.srcLnStr=' '+ctx.srcLnStr;
 		s=ctx.srcLnStr+'  '+ctx.addrStr+ctx.pass1Spc;
 	}
 	s+= ctx.anonMark? ctx.anonMark+' ':'  ';
 	while (ctx.labelStr.length<9) ctx.labelStr+=' ';
 	s+=ctx.labelStr;
+	if(wantCleanLine) {
+		if(ctx.listing.match(/\n\s+$/))
+			ctx.listing= ctx.listing.replace(/\n\s+$/, "")+"\n";
+	}
 	ctx.listing+=s+' '+ctx.pict;
 	if (ctx.comment) {
 		if (ctx.pict) ctx.listing+=' ';
