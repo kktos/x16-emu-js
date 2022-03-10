@@ -1,5 +1,5 @@
+import { CxINTROM, CxSLOTROM, ROM } from "./applewin.rom";
 import HGR_IMG from "./hgr-img";
-import ROM from "./rom-C000-FFFF";
 import Sound from "./sound.js";
 import Video from "./video.js";
 
@@ -37,8 +37,18 @@ const machine= {
 		bank: 2,
 		map: [
 			{
+				bank: 1,
+				addr: 0xC100,
+				data: CxINTROM
+			},
+			{
 				bank: 0,
-				addr: 0xC000,
+				addr: 0xC100,
+				data: CxSLOTROM
+			},
+			{
+				bank: 0,
+				addr: 0xD000,
 				data: ROM
 			},
 			{
@@ -50,6 +60,7 @@ const machine= {
 				bank: 0,
 				addr: 0x0800,
 				data: `
+					00 00 00 00 00 00 00 00
 					20 2F FB 20 58 FC A9 00
 					48 AA 20 24 08 A0 0A 20
 					A8 FC 88 D0 FA 68 CD 5F
@@ -76,6 +87,7 @@ const machine= {
 		],
 	},
 
+	debuggerOnBRK: false,
 	busSrcFile: "apple2/bus.js",
 	Video,
 	Sound

@@ -72,6 +72,9 @@ export default class VM {
 		});
 
 		this.setupMemoryMap();
+
+		this.sendMessage("addHook", {addr: 0xC600});
+
 	}
 
 	setupMemoryMap() {
@@ -105,19 +108,25 @@ export default class VM {
 		while(acc > inc) {
 			this.video.update(this.gc);
 			this.gc.tick++;
-			this.sound.doTick( await this.waitMessage("cycles").then(d=>d.data) );
+			this.sound.doTick( await this.waitMessage("cycles") );
 			acc-= inc;
 		}
 		lastTime= dt;
-		this.isRunning && requestAnimationFrame((dt)=> this.loop(dt));
 
+		if(this.isRunning) {
+			requestAnimationFrame((dt)=> this.loop(dt));
 
-		this.waitMessage("mhz").then(d=>{
-			speedIdx= speedIdx+1 % speeds.length;
-			speeds[speedIdx]= d.data/1_000;
-			const avg= speeds.reduce((acc, cur)=>acc+cur, 0) / speeds.length;
-			this.gc.mhz= Math.round((avg + Number.EPSILON) * 100) / 100
-		});
+			this.waitMessage("mhz").then(data=>{
+				speedIdx= speedIdx+1 % speeds.length;
+				speeds[speedIdx]= data/1_000;
+				const avg= speeds.reduce((acc, cur)=>acc+cur, 0) / speeds.length;
+				this.gc.mhz= Math.round((avg + Number.EPSILON) * 100) / 100
+			});
+
+		}
+		// setTimeout(() =>this.debugger.update() , 0);
+		// this.debugger.update();
+
 	}
 
 	handleMessage(msg) {
@@ -133,32 +142,80 @@ export default class VM {
 			case "stopped":
 				this.debugger.pause();
 				break;
+
+			case "hooked":
+				console.log("hooked", msg.data.PC.toString(16), msg.data);
+				switch(msg.data.PC) {
+					case 0xC600:
+						this.sendMessage("register", {register:"PC", value:0x801});
+						setTimeout( () => this.sendMessage("run"), 0);
+						break;
+
+					default:
+						this.debugger.pause();
+						break;
+				}
+				break;
 		}
 	}
 
 	waitMessage(cmd, data= null) {
 		const msgID= msgcounter++;
 		return new Promise(resolve => {
-			this.cpuWorker.postMessage({cmd, id: msgID, data});
+			const {port1, port2}= new MessageChannel();
+			port1.onmessage= ({data:{cmd, id, data}}) => {
+
+				// if(!["mhz","cycles"].includes(cmd))
+				// 	console.log("waitMessage response", cmd, id, data);
+
+				resolve(data);
+			};
+
+			// if(!["mhz","cycles"].includes(cmd))
+			// 	console.log("waitMessage send", cmd, msgID, data);
+
+			this.cpuWorker.postMessage({cmd, id: msgID, data}, [port2]);
+		});
+	}
+/*
+	waitMessage0(cmd, data= null) {
+		const msgID= msgcounter++;
+		return new Promise(resolve => {
+
+			if(!this.isRunning)
+				console.log("waitMessage", "post", {cmd, id: msgID, data});
+
 			const listener= this.cpuWorker.addEventListener('message', (e) => {
-				if(e.data.id==msgID) {
-					this.cpuWorker.removeEventListener('message', listener);
-					resolve(e.data);
+
+				if(!this.isRunning)
+					console.log("waitMessage", "onMessage", e.data);
+
+				const response= e.data;
+				if(response.id!=msgID) {
+					console.error("waitMessage", "received wrong answer");
+					console.error("waitMessage", "post", {cmd, id: msgID, data});
+					console.error("waitMessage", "response", response);
 				}
-			});
+				resolve(response);
+
+				// this.cpuWorker.removeEventListener('message', listener);
+			}, { once: true });
+
+			this.cpuWorker.postMessage({cmd, id: msgID, data});
+
 		})
 	}
-
+*/
 	sendMessage(cmd, data= null) {
 		this.cpuWorker.postMessage({cmd, id: msgcounter++, data});
 	}
 
 	getCPUCycles() {
-		return this.waitMessage("cycles").then(msg => msg.data);
+		return this.waitMessage("cycles");
 	}
 
 	getCPUstate() {
-		return this.waitMessage("update").then(msg=> msg.data);
+		return this.waitMessage("update");
 	}
 
 	updateCPUregister(register, value) {
@@ -169,8 +226,8 @@ export default class VM {
 		this.video.update(this.gc);
 	}
 
-	pause() {
-		this.sendMessage("stop");
+	async pause() {
+		console.log( "stopped at", (await this.waitMessage("stop")).toString(16) );
 		this.isRunning= false;
 	}
 
@@ -182,16 +239,19 @@ export default class VM {
 		this.sendMessage("run");
 	}
 
-	step() {
-		this.waitMessage("step").then(() => this.video.update(this.gc));
+	async step() {
+		await this.waitMessage("step");
+		this.video.update(this.gc);
 	}
 
-	stepOut() {
-		this.sendMessage("stepOut").then(() => this.video.update(this.gc));
+	async stepOut() {
+		await this.waitMessage("stepOut");
+		this.video.update(this.gc);
 	}
 
-	stepOver() {
-		this.sendMessage("stepOver").then(() => this.video.update(this.gc));
+	async stepOver() {
+		await this.waitMessage("stepOver");
+		this.video.update(this.gc);
 	}
 
 	handleEvent(e) {

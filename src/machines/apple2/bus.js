@@ -50,7 +50,42 @@ $C01B R7 MIXED 1=mixed graphics & text 0=full screen
 $C01C R7 PAGE2 1=video page2 selected or aux
 $C01D R7 HIRES 1=high resolution graphics 0=low resolution
 $C01E R7 ALTCHARSET 1=alt character set on 0=alt char set off
-$C01F R7 80COL 1=80 col display on0=80 col display off
+$C01F R7 80COL 1=80 col display on 0=80 col display off
+
+"Language Card" area Switches
+Bank 1 and Bank 2 here are the 4K banks at $D000-$DFFF. The
+remaining area from $E000-$FFFF is the same for both
+sets of switches.
+
+$C080 ;LC RAM bank2, Read and WR-protect RAM
+
+$C081 ROMIN;LC RAM bank2, Read ROM instead of RAM,
+;two or more successive reads WR-enables RAM
+
+$C082 ;LC RAM bank2, Read ROM instead of RAM,
+;WR-protect RAM
+
+$C083 LCBANK2 ;LC RAM bank2, Read RAM
+;two or more successive reads WR-enables RAM
+
+$C088 ;LC RAM bank1, Read and WR-protect RAM
+$C089 ;LC RAM bank1, Read ROM instead of RAM,
+;two or more successive reads WR-enables RAM
+
+$C08A ;LC RAM bank1, Read ROM instead of RAM,
+;WR-protect RAM
+
+$C08B LCBANK1 ;LC RAM bank1, Read RAM
+;two or more successive reads WR-enables RAM
+
+$C084-$C087 are echoes of $C080-$C083
+$C08C-$C08F are echoes of $C088-$C08B
+
+$C080 R  LCRAMIN2 Read RAM bank 2; no write
+$C081 RR ROMIN2 Read ROM; write RAM bank 2
+$C082 R  LCROMIN2 Read ROM; no write
+$C083 RR LCBANK2 Read/write RAM bank 2
+
 */
 const SWITCHES = {
 	// W 80STOREOFF Allow page2 to switch video page1 page2
@@ -119,6 +154,8 @@ const SWITCHES = {
 	// R7 SLOTC3ROM 1=slot $C3 ROM active 0=main $C3 ROM active
 	SLOTC3ROM: 0xC017,
 
+	SLOT7F1: 0xC0F1,
+
 };
 
 export default class Bus {
@@ -161,17 +198,19 @@ export default class Bus {
 
 			if(addr>=0x0400 && addr<0x0800) {
 				const bank= this.store80On ? this.videoPage : this.readBank;
-				const value= this._read(bank, addr);
-				// console.log("READVID", bank.toString(16), addr.toString(16), value.toString(16));
-
-				return value;
+				return this._read(bank, addr);
 			}
 
 			return this._read(this.readBank, addr);
 		}
-		// $C100-$FFFF
-		if(addr>0xC0FF) {
+		// $D000-$FFFF
+		if(addr>0xCFFF) {
 			return this._read(0, addr);
+		}
+
+		// $C100-$cFFF
+		if(addr>0xC0FF) {
+			return this._read(this.cxMainRomOn ? 1 : 0, addr);
 		}
 
 		let value= 0;
@@ -254,6 +293,10 @@ export default class Bus {
 				this.controller.postMessage({cmd:"video", data:{mode: "high"}});
 				break;
 
+			case SWITCHES.SLOT7F1:
+				// check $C74C routine
+				value= 1;
+				break;
 		}
 		// console.log(
 		// 	"READ",

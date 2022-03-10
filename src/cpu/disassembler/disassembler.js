@@ -25,35 +25,42 @@ export default class Disassembler {
 		this.memory= new Uint8Array(memory);
 	}
 
-	readbyte(addr) {
-		return this.memory[addr&0xFFFF];
+	readbyte(bank, addr) {
+		addr&= 0xFFFF;
+		return this.memory[bank*0x10000+addr];
 	}
 
-	readword(addr) {
-		return (this.memory[(addr+1)&0xFFFF]<<8) | this.memory[addr&0xFFFF];
+	readword(bank, addr) {
+		const base= bank*0x10000;
+		return (this.memory[base+((addr+1)&0xFFFF)]<<8) | this.memory[base+(addr&0xFFFF)];
 	}
 
-	disassemble(addr, cpuState)
+	disassemble(bank, addr, cpuState)
 	{
 		let len= 1;
-		let temp_str= instructions[this.readbyte(addr)];
+		let temp_str= instructions[this.readbyte(bank, addr)];
 		let ret_str= "";
+
+		if(!temp_str) {
+			console.log(bank, addr);
+		}
+
 		const [op, addrMode] = temp_str.split(" ");
 		let comment= null;
 		for(let i= 0; i<temp_str.length; i++) {
 			switch(temp_str[i]) {
 				case "$": {
-					const byt= this.readbyte(addr+len);
+					const byt= this.readbyte(bank, addr+len);
 					ret_str+= disByte(byt);
 
 					switch(addrMode) {
 						case "($),Y": {
-							const destAddr= this.readword(byt);
+							const destAddr= this.readword(bank, byt);
 							comment= `$${utils.hexword(destAddr)}+$${utils.hexbyte(cpuState.Y)}= $${utils.hexword(destAddr+cpuState.Y)}`;
 							break;
 						}
 						case "$": {
-							const value= this.readbyte(byt);
+							const value= this.readbyte(bank, byt);
 							comment= `$${utils.hexbyte(value)}`;
 							break;
 						}
@@ -64,7 +71,7 @@ export default class Disassembler {
 				}
 
 				case "r":
-					ret_str+= "$"+utils.hexword(addr + utils.signExtend(this.readbyte(addr + len)) + 2);
+					ret_str+= "$"+utils.hexword(addr + utils.signExtend(this.readbyte(bank, addr + len)) + 2);
 					len++;
 					if(cpuState.PC != addr)
 						break;
@@ -94,12 +101,12 @@ export default class Disassembler {
 					break;
 
 				case "%": {
-					const destAddr = this.readbyte(addr + len) | (this.readbyte(addr + len + 1) << 8);
+					const destAddr = this.readbyte(bank, addr + len) | (this.readbyte(bank, addr + len + 1) << 8);
 					const isFnCall = ["JMP", "JSR"].includes(op);
 					if(!isFnCall)
 						switch(addrMode) {
 							case "%": {
-								comment= `$${utils.hexbyte(this.readbyte(destAddr))}`;
+								comment= `$${utils.hexbyte(this.readbyte(bank, destAddr))}`;
 								break;
 							}
 						}
@@ -119,7 +126,7 @@ export default class Disassembler {
 	}
 
 	_disassemble(addr) {
-		let opcode = opcodes[this.readbyte(addr)];
+		let opcode = opcodes[this.readbyte(bank, addr)];
 		if (!opcode) {
 			return ["???", addr + 1];
 		}
@@ -139,35 +146,35 @@ export default class Disassembler {
 		}
 		switch (param) {
 			case "imm":
-				return [split[0] + " #$" + utils.hexbyte(this.readbyte(addr + 1)) + suffix, addr + 2];
+				return [split[0] + " #$" + utils.hexbyte(this.readbyte(bank, addr + 1)) + suffix, addr + 2];
 			case "abs":
 				let formatter = (split[0] === "JMP" || split[0] === "JSR") ? formatJumpAddr : formatAddr;
-				destAddr = this.readbyte(addr + 1) | (this.readbyte(addr + 2) << 8);
+				destAddr = this.readbyte(bank, addr + 1) | (this.readbyte(bank, addr + 2) << 8);
 				return [split[0] + " $" + formatter(destAddr) + suffix, addr + 3, destAddr];
 			case "branch":
-				destAddr = addr + utils.signExtend(this.readbyte(addr + 1)) + 2;
+				destAddr = addr + utils.signExtend(this.readbyte(bank, addr + 1)) + 2;
 				return [split[0] + " $" + formatJumpAddr(destAddr) + suffix, addr + 2, destAddr];
 			case "zp": {
-				const zpAddr= this.readbyte(addr + 1);
-				const zpValue= utils.hexbyte(this.readbyte(zpAddr));
+				const zpAddr= this.readbyte(bank, addr + 1);
+				const zpValue= utils.hexbyte(this.readbyte(bank, zpAddr));
 				return [
-					`${split[0]} $${utils.hexbyte(this.readbyte(addr + 1))}${suffix}; $${zpValue}`,
+					`${split[0]} $${utils.hexbyte(this.readbyte(bank, addr + 1))}${suffix}; $${zpValue}`,
 					addr + 2
 				];
 			}
 			case "(,x)":
-				return [split[0] + " ($" + utils.hexbyte(this.readbyte(addr + 1)) + ", X)" + suffix, addr + 2];
+				return [split[0] + " ($" + utils.hexbyte(this.readbyte(bank, addr + 1)) + ", X)" + suffix, addr + 2];
 			case "()":
-				destAddr = this.readbyte(addr + 1);
-				destAddr = this.readbyte(destAddr) | (this.readbyte(destAddr + 1) << 8);
-				return [split[0] + " ($" + utils.hexbyte(this.readbyte(addr + 1)) + ")" + suffix + " ; $" + utils.hexword(destAddr) + suffix2, addr + 2];
+				destAddr = this.readbyte(bank, addr + 1);
+				destAddr = this.readbyte(bank, destAddr) | (this.readbyte(bank, destAddr + 1) << 8);
+				return [split[0] + " ($" + utils.hexbyte(this.readbyte(bank, addr + 1)) + ")" + suffix + " ; $" + utils.hexword(destAddr) + suffix2, addr + 2];
 			case "(abs)":
-				destAddr = this.readbyte(addr + 1) | (this.readbyte(addr + 2) << 8);
-				indDest = this.readbyte(destAddr) | (this.readbyte(destAddr + 1) << 8);
+				destAddr = this.readbyte(bank, addr + 1) | (this.readbyte(bank, addr + 2) << 8);
+				indDest = this.readbyte(bank, destAddr) | (this.readbyte(bank, destAddr + 1) << 8);
 				return [split[0] + " ($" + formatJumpAddr(destAddr) + ")" + suffix + " ; $" + utils.hexword(indDest) + suffix2, addr + 3, indDest];
 			case "(abs,x)":
-				destAddr = this.readbyte(addr + 1) | (this.readbyte(addr + 2) << 8);
-				indDest = this.readbyte(destAddr) | (this.readbyte(destAddr + 1) << 8);
+				destAddr = this.readbyte(bank, addr + 1) | (this.readbyte(bank, addr + 2) << 8);
+				indDest = this.readbyte(bank, destAddr) | (this.readbyte(bank, destAddr + 1) << 8);
 				return [split[0] + " ($" + formatJumpAddr(destAddr) + ",x)" + suffix, addr + 3, indDest];
 		}
 		return [opcode, addr + 1];

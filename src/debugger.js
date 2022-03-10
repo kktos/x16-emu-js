@@ -1,4 +1,4 @@
-import { assemble, setup as assemblerInit } from "./6502assembler/6502assembler.js";
+import { assemble } from "./6502assembler/6502assembler.js";
 import Disassembler from "./cpu/disassembler/disassembler.js";
 import * as utils from "./utils.js";
 
@@ -14,6 +14,7 @@ import * as utils from "./utils.js";
 const commonInstructions= /(RTS|B..|JMP|JSR|LD[AXY]|ST[AXY]|TA[XY]|T[XY]A|AD[DC]|SUB|SBC|CLC|SEC|CMP|EOR|ORR|AND|INC|DEC).*/;
 const uncommonInstrucions= /.*,\s*([XY]|X\))$/;
 const DISASM_LINES_COUNT= 40;
+const id= "65x02 Machine Emulator";
 export default class Debugger {
 
 	constructor(vm, memory) {
@@ -26,13 +27,21 @@ export default class Debugger {
 		this.dumpMemAddr= 0;
 		this.dumpMemBank= 0;
 
+		const bps= JSON.parse(localStorage.getItem(`${id}-bps`));
+		this.breakpoints= bps && Array.isArray(bps) ? bps : [];
+		this.vm.sendMessage("initBP",{list: this.breakpoints});
+
 		this.setupUI();
 
-		assemblerInit();
 	}
 
 	setupUI() {
 		this.uiroot= document.querySelector("#debugger");
+		this.UIstack= this.uiroot.querySelector("#stack");
+		this.UImem= this.uiroot.querySelector("#mem");
+		this.UIdisasm= this.uiroot.querySelector("#disasm");
+		this.UIbps= this.uiroot.querySelector("#bps");
+
 		this.registers= {
 			pc: this.uiroot.querySelector("#registers #PC"),
 			a: this.uiroot.querySelector("#registers #A"),
@@ -46,9 +55,10 @@ export default class Debugger {
 			.querySelector("#registers")
 			.addEventListener("click", (e)=> this.onClickRegister(e));
 
-		const mem= this.uiroot.querySelector("#mem");
-		mem.addEventListener("wheel", (e) => this.onPageMem(e), {passive: true})
-		mem.addEventListener("click", (e)=> this.onClickMem(e));
+		this.UImem.addEventListener("wheel", (e) => this.onPageMem(e), {passive: true})
+		this.UImem.addEventListener("click", (e)=> this.onClickMem(e));
+
+		this.UIbps.addEventListener("click", (e)=> this.onClickBreakpoints(e));
 
 		this.uiroot
 			.querySelectorAll(".btn")
@@ -63,6 +73,7 @@ export default class Debugger {
 			});
 
 		this.updateBtns(false);
+		this.update();
 	}
 
 	onChange(e) {
@@ -87,6 +98,7 @@ export default class Debugger {
 	}
 
 	async onClickBtn(e) {
+
 		switch(e.target.id) {
 			case "asm-start": {
 				document.querySelector(".asm").style.visibility= "visible";
@@ -116,6 +128,14 @@ export default class Debugger {
 				console.clear();
 				assemble(src)
 						.then(code => this.storeInMem(code));
+				break;
+			}
+
+			case "boot-disk": {
+				const [fileHandle] = await showOpenFilePicker();
+				const file = await fileHandle.getFile();
+				const buffer = await file.arrayBuffer();
+				console.log(buffer);
 				break;
 			}
 
@@ -218,6 +238,22 @@ export default class Debugger {
 		this.update();
 	}
 
+	onClickBreakpoints(e) {
+		const currentValue= e.target.id<this.breakpoints.length ? this.breakpoints[e.target.id] : null;
+		let value= prompt("Enter Breakpoint address", currentValue ? utils.hexword(currentValue) : "");
+		if(value=="" && currentValue) {
+			this.vm.sendMessage("removeBP",{addr: currentValue});
+			const idx= this.breakpoints.indexOf(currentValue);
+			this.breakpoints.splice(idx, 1);
+		} else {
+			value= parseInt(value, 16);
+			this.vm.sendMessage("addBP",{addr: value});
+			this.breakpoints.push(value);
+		}
+		localStorage.setItem(`${id}-bps`, JSON.stringify(this.breakpoints));
+		this.updateBreakpoints();
+}
+
 	// onInstruction(pc, opcode) {
 	// 	return 	!this.stepCount--
 	// 			|| opcode == 0x00
@@ -241,7 +277,7 @@ export default class Debugger {
 			let score= 0;
 			let addr= startingPoint & 0xffff;
 			while (addr < address) {
-				let result= this.disassembler.disassemble(addr, cpuState);
+				let result= this.disassembler.disassemble(this.dumpMemBank, addr, cpuState);
 				if (result[0] === cpuState.PC) score += 10; // huge boost if this instruction was executed
 				if (result[0].match(commonInstructions) && !result[0].match(uncommonInstrucions)) {
 					score++;
@@ -264,7 +300,7 @@ export default class Debugger {
 			return `
 				<div class="line ${selected?"selected":""}">
 					<div class="instruction">
-						${addr.toString(16).padStart(4, "0")}: ${asm}
+					${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}: ${asm}
 					</div>` +
 					(comment ?
 						`<div class="comment">${comment}</div>`
@@ -277,24 +313,24 @@ export default class Debugger {
 		let disasmStr= "";
 		let addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			const rez= this.disassembler.disassemble(addr, cpuState);
+			const rez= this.disassembler.disassemble(this.dumpMemBank, addr, cpuState);
 			disasmStr+= buildLine(addr, rez[0], rez[2], addr==cpuState.PC);
 			addr= rez[1];
 		}
 		addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
 			addr= this.prevInstruction(cpuState, addr);
-			const rez= this.disassembler.disassemble(addr, cpuState);
+			const rez= this.disassembler.disassemble(this.dumpMemBank, addr, cpuState);
 			disasmStr= buildLine(addr, rez[0], rez[2]) + disasmStr;
 		}
 
-		document.querySelector("#debugger #disasm").innerHTML= disasmStr;
+		this.UIdisasm.innerHTML= disasmStr;
 	}
 
 	updateMem() {
 		let dumpStr= "";
 		for(let line= 0; line<DISASM_LINES_COUNT; line++) {
-			const addr= this.dumpMemAddr + line*16;
+			const addr= (this.dumpMemAddr + line*16) & 0xFFFF;
 			dumpStr+= `<div class="addr" id="${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}">${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}:`;
 			for(let column= 0; column<16; column++)
 				dumpStr+= 	` <span class="value" id="${column}">` +
@@ -302,20 +338,30 @@ export default class Debugger {
 							"</span>";
 			dumpStr+= "</div>";
 		}
-		document.querySelector("#debugger #mem").innerHTML= dumpStr;
+		this.UImem.innerHTML= dumpStr;
 	}
 
 	updateStack(cpuState) {
 		let dumpStr= "";
-		let stackAddr= (cpuState.SP-15) & 0xff;
+		let stackAddr= (cpuState.SP-2) & 0xff;
 		const currentSP= 0x100 | cpuState.SP;
-		for(let line= 0; line<30; line++) {
+		for(let line= 0; line<10; line++) {
 			const addr= 0x100 | (stackAddr + line);
 			dumpStr+= `<div class="${addr == currentSP?"selected":""}">
 							${utils.hexword(addr)}: ${utils.hexbyte(this.memory[addr])}
 						</div>`;
 		}
-		document.querySelector("#debugger #stack").innerHTML= dumpStr;
+		this.UIstack.innerHTML= dumpStr;
+	}
+
+	updateBreakpoints() {
+		let dumpStr= "";
+		for(let line= 0; line<10; line++) {
+			dumpStr+= `<div id="${line}">
+							BP${line} ${line< this.breakpoints.length ? utils.hexword(this.breakpoints[line]) : ""}
+						</div>`;
+		}
+		this.UIbps.innerHTML= dumpStr;
 	}
 
 	updateRegisters(cpuState) {
@@ -333,9 +379,8 @@ export default class Debugger {
 
 	async update() {
 		const cpuState= await this.vm.getCPUstate();
-		console.log({cpuState});
-
 		this.updateStack(cpuState);
+		this.updateBreakpoints();
 		this.updateRegisters(cpuState);
 		this.updateMem();
 		this.updateDisasm(cpuState);

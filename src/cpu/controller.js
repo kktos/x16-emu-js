@@ -37,13 +37,14 @@ let cycleLogActivated= false;
 
 let keyBuffer= [];
 
+const hooks= [];
 const breakpoints= [
 	// 0xC803
 	// 0xCC90
 	// 0xCCBD
-	0xC814
+	// 0xC814
 ];
-let tempBP= 0;
+let tempBP= -1;
 let jsrLevel= 0;
 let stopAtjsrLevel= 0;
 let wannaStopOnRTS= false;
@@ -63,39 +64,48 @@ function* cycle10_6()
 	{
 		const startCount= core.cycle_count;
 		// for(let i=0; i<17_030; i++)
-		while(core.cycle_count-startCount < cyclesCountForSpeed)
-			if(core.running) {
-				core.calcAddress= -1;
-				// if (cycleLogActivated) recordCycle();
-				// else
-				if(core.PC == tempBP || breakpoints.includes(core.PC)) {
-					tempBP= 0;
+		while(core.running && (core.cycle_count-startCount < cyclesCountForSpeed)) {
+			core.calcAddress= -1;
+			// if (cycleLogActivated) recordCycle();
+			// else
+			if(core.PC == tempBP || breakpoints.includes(core.PC)) {
+				tempBP= -1;
+				core.running= 0;
+				self.postMessage({cmd:"stopped", PC: core.PC});
+				yield;
+			}
+
+			if(hooks.includes(core.PC)) {
+				core.running= 0;
+				self.postMessage({cmd:"hooked", data: {
+					PC: core.PC,
+					A: core.A,
+					X: core.X,
+					Y: core.Y,
+					SP: core.SP,
+				}});
+				yield;
+			}
+
+			const op= core.bus.read(core.PC);
+
+			if(op == 0x20) {
+				jsrLevel++;
+			}
+
+			if(op == 0x60) {
+				if(wannaStopOnRTS && stopAtjsrLevel == jsrLevel) {
+					wannaStopOnRTS= false;
 					core.running= 0;
 					self.postMessage({cmd:"stopped", PC: core.PC});
 					yield;
 				}
-
-				const op= core.bus.read(core.PC);
-
-				if(op == 0x20) {
-					jsrLevel++;
-					// console.log(core.PC.toString(16),"JSR", (core.bus.read(core.PC+1)+(core.bus.read(core.PC+2)<<8)).toString(16), jsrLevel);
-				}
-
-				if(op == 0x60) {
-					// console.log(core.PC.toString(16),"RTS", (core.bus.read(0x100|core.SP+1)+1+(core.bus.read(0x100|core.SP+2)<<8)).toString(16), jsrLevel-1);
-					if(wannaStopOnRTS && stopAtjsrLevel == jsrLevel) {
-						wannaStopOnRTS= false;
-						core.running= 0;
-						self.postMessage({cmd:"stopped", PC: core.PC});
-						yield;
-					}
-					jsrLevel--;
-				}
-
-				core.PC++;
-				opcodes[op]();
+				jsrLevel--;
 			}
+
+			core.PC++;
+			opcodes[op]();
+		}
 		yield;
 	} while(true);
 }
@@ -162,14 +172,18 @@ function recordCycle()
 //*MESSAGE LOOP*
 //**************
 
-async function OnMessage({data:{cmd, id, data}})
+async function OnMessage({ports, data:{cmd, id, data}})
 {
+	// console.log("worker onMessage", cmd, id, core.running?"RUNNING":"STOPPED");
+
+	const recipient= ports?.[0];
+
 	debugflag= '';
 	switch(cmd) {
 
 		case 'setup':
 			await setup(data);
-			self.postMessage({cmd: "setup", id: id, data: "done" });
+			recipient?.postMessage({cmd: "setup", id: id, data: "done" });
 			break;
 
 		// case 'debug':
@@ -180,6 +194,35 @@ async function OnMessage({data:{cmd, id, data}})
 		// 	}
 		// 	break;
 
+		case "initBP":
+			breakpoints.length= 0;
+			breakpoints.push(...data.list);
+			break;
+
+		case "addBP":
+			if(!breakpoints.includes(data.addr))
+				breakpoints.push(data.addr);
+			break;
+
+		case "removeBP": {
+			const idx= breakpoints.indexOf(data.addr);
+			if(idx>=0)
+				breakpoints.splice(idx, 1);
+			break;
+		}
+
+		case "addHook":
+			if(!hooks.includes(data.addr))
+				hooks.push(data.addr);
+			break;
+
+		case "removeHook": {
+			const idx= hooks.indexOf(data.addr);
+			if(idx>=0)
+				hooks.splice(idx, 1);
+			break;
+		}
+
 		case "memWrite":
 			core.bus.writeHexa(data.bank, data.addr, data.value);
 			break;
@@ -189,17 +232,19 @@ async function OnMessage({data:{cmd, id, data}})
 			break;
 
 		case 'step':
+			console.log('step', core.PC.toString(16), jsrLevel);
 			step();
-			self.postMessage({cmd: "step", id: id });
+			recipient?.postMessage({cmd: "step", id: id });
 			break;
 
 		case 'stepOver':
 			if(0x20 == core.bus.read(core.PC)) {
 				tempBP= core.PC + 3;
 				run();
+				recipient?.postMessage({cmd: "running", id: id });
 			} else
 				step();
-			self.postMessage({cmd: "stepOver", id: id });
+				recipient?.postMessage({cmd: "stepOver", id: id });
 			break;
 
 		case 'stepOut': {
@@ -207,7 +252,7 @@ async function OnMessage({data:{cmd, id, data}})
 			stopAtjsrLevel= jsrLevel;
 			// console.log('stepOut', core.PC.toString(16), jsrLevel);
 			run();
-			self.postMessage({cmd: "stepOut", id: id });
+			recipient?.postMessage({cmd: "stepOut", id: id });
 			break;
 		}
 
@@ -227,7 +272,7 @@ async function OnMessage({data:{cmd, id, data}})
 				case "v":	core.FlagV= value; break;
 				case "n":	core.FlagN= value; break;
 				default:
-					self.postMessage({cmd: "error", error: `unknown register "${register}"` });
+					recipient?.postMessage({cmd: "error", error: `unknown register "${register}"` });
 			}
 			break;
 		}
@@ -246,16 +291,16 @@ async function OnMessage({data:{cmd, id, data}})
 				PC: core.PC, A: core.A, X: core.X, Y: core.Y, SP: core.SP, P,
 				cycle_count: core.cycle_count, calcAddress: core.calcAddress
 			};
-			self.postMessage({cmd: "update", id: id, data: updateData });
+			recipient?.postMessage({cmd: "update", id, data: updateData });
 			break;
 		}
 
 		case 'cycles':
-			self.postMessage({cmd: "cycles", id: id, data: core.cycle_count});
+			recipient?.postMessage({cmd: "cycles", id, data: core.cycle_count});
 			break;
 
 		case 'mhz':
-			self.postMessage({cmd: "mhz", id: id, data: core.mhz});
+			recipient?.postMessage({cmd: "mhz", id, data: core.mhz});
 			break;
 
 		case 'run':
@@ -267,7 +312,7 @@ async function OnMessage({data:{cmd, id, data}})
 			{
 				//self.postMessage({cmd:"msgbox",msg:"begin stopping"});
 				core.running= 0;
-				self.postMessage({cmd:"stopped"});
+				recipient?.postMessage({cmd:"stopped", id, data: core.cycle_count});
 			}
 			//else self.postMessage({cmd:"msgbox",msg:"did not begin stopping"});
 			break;
