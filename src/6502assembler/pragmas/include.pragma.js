@@ -1,6 +1,6 @@
 import { getExpression } from "../expression.js";
-import { ET_S, logError, logLine } from "../log.js";
-import { registerNextLineHandler, tokenizeNextLine } from "../symbol.js";
+import { ET_C, ET_S, logError, logLine } from "../log.js";
+import { registerNextLineHandler, tokenizeNextLine } from "../tokenizer.js";
 
 
 export function processInclude(ctx, pragma) {
@@ -23,6 +23,11 @@ export function processInclude(ctx, pragma) {
 
 	const fileSrc= ctx.readFile(filename);
 
+	if(fileSrc == null) {
+		logError(ctx, ET_C, "Unable to include "+filename);
+		return false;
+	}
+
 	// console.log({filename, fileSrc});
 
 	const includeCtx= {
@@ -34,11 +39,9 @@ export function processInclude(ctx, pragma) {
 
 	ctx.srcLineIdx= ctx.srcc= 0;
 	ctx.codesrc= fileSrc;
+	ctx.filename= filename;
 
 	registerNextLineHandler(filename, () => nextIncludeLine(ctx, includeCtx));
-
-	logError;
-	ET_S;
 
 	return true;
 }

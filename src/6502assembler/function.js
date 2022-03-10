@@ -1,4 +1,4 @@
-import { symtab } from "./6502assembler.js";
+import { isNSentryDefined } from "./namespace.js";
 
 const functions= {
 	DEF: isDefined,
@@ -14,12 +14,10 @@ export function execFunction(ctx, name, parms) {
 }
 
 function isDefined(ctx, parms) {
-	// console.log("isDefined", parms, symtab);
-	return symtab.hasOwnProperty(parms.toUpperCase());
+	return isNSentryDefined(ctx, parms.toUpperCase());
 }
 
 function isUndefined(ctx, parms) {
 	const  isUndef= !isDefined(ctx, parms);
-	// console.log("isUndefined", parms, " =>",isUndef, ctx.pass);
 	return isUndef;
 }

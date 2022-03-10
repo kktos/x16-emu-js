@@ -1,7 +1,7 @@
-import { symtab } from "../6502assembler.js";
 import { getExpression, getIdentifier } from "../expression.js";
 import { ET_P, ET_S, logError, logLine } from "../log.js";
-import { registerNextLineHandler } from "../symbol.js";
+import { getNSentry } from "../namespace.js";
+import { registerNextLineHandler } from "../tokenizer.js";
 import { readBlock } from "./block.utils.js";
 
 function repeatNextLine(ctx, repeatCtx) {
@@ -42,9 +42,9 @@ export function processRepeat(ctx, pragma) {
 	const iterator= { name: undefined, value: 0 }
 	if(ctx.ofs+1 < ctx.sym.length) {
 		const { v:name }= getIdentifier(ctx.sym[ctx.ofs+1], 0);
-		if(symtab["%locals%"].v == null)
-			symtab["%locals%"].v= [];
-		symtab["%locals%"].v.push(iterator);
+		if(getNSentry(ctx, "%locals%").v == null)
+			getNSentry(ctx, "%locals%").v= [];
+		getNSentry(ctx, "%locals%").v.push(iterator);
 		iterator.name= name;
 	}
 

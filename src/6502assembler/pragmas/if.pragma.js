@@ -1,6 +1,6 @@
 import { getExpression } from "../expression.js";
 import { ET_P, logError, logLine } from "../log.js";
-import { registerNextLineHandler } from "../symbol.js";
+import { registerNextLineHandler } from "../tokenizer.js";
 import { readBlock } from "./block.utils.js";
 
 function ifNextLine(ctx, ifCtx) {

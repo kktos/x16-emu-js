@@ -1,5 +1,5 @@
-import { symtab } from "./6502assembler.js";
-import { ET_P } from "./log.js";
+import { ET_C, ET_P } from "./log.js";
+import { getNSentry } from "./namespace.js";
 
 export function getVarValue(ctx, name) {
 
@@ -7,9 +7,33 @@ export function getVarValue(ctx, name) {
 		case "CPU":
 			return { v: ctx.cpu, error: false };
 
+		case "SEGMENTSIZE": {
+			if(!ctx.currentSegment)
+				return { v: null, et: ET_C, error: "No segment defined" };
+
+			const segment= ctx.segments[ctx.currentSegment];
+			return { v: segment.end - segment.start + 1, error: false };
+		}
+
+		case "SEGMENTEND": {
+			if(!ctx.currentSegment)
+				return { v: null, et: ET_C, error: "No segment defined" };
+
+			const segment= ctx.segments[ctx.currentSegment];
+			return { v: segment.end, error: false };
+		}
+
+		case "SEGMENTSTART": {
+			if(!ctx.currentSegment)
+				return { v: null, et: ET_C, error: "No segment defined" };
+
+			const segment= ctx.segments[ctx.currentSegment];
+			return { v: segment.start, error: false };
+		}
+
 		// for macros
 		case "PARAMCOUNT": {
-			const varDef= symtab["%locals%"]?.v?.find(def => def.name == ".PARAMCOUNT");
+			const varDef= getNSentry(ctx, "%locals%")?.v?.find(def => def.name == ".PARAMCOUNT");
 			return { v: varDef?.value, et: "MACRO ERROR", error: !varDef ? "can be use only inside a macro" : false };
 		}
 

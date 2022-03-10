@@ -1,4 +1,3 @@
-//import { ET_S, logError } from "./log.js";
 import { getExpression } from "../expression.js";
 import { logError, logLine } from "../log.js";
 
@@ -7,13 +6,7 @@ export function processASMOuput(ctx, pragma) {
 
 	let msg= "";
 	for(let idx= ctx.ofs; idx<ctx.sym.length; idx++) {
-
-		// ctx.listing+= idx+" - "+ctx.sym[idx]+"\n";
-
-		let r= getExpression(ctx, ctx.sym[idx]);
-
-		// ctx.listing+= JSON.stringify(r)+"\n";
-
+		const r= getExpression(ctx, ctx.sym[idx]);
 		if(r.error) {
 			logError(ctx, r.et, r.error);
 			return false;

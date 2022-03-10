@@ -1,6 +1,6 @@
-import { symtab } from "./6502assembler.js";
 import { execFunction, isFunction } from "./function.js";
 import { ET_C, ET_P, ET_S } from "./log.js";
+import { getNSentry } from "./namespace.js";
 import { getVarValue } from "./variable.js";
 
 const digitCharacters= [
@@ -125,9 +125,6 @@ function resolveExpression(ctx, stack, pict, idx, doubleWord) {
 		size= doubleWord ? 0xffffffff : 0xffff,
 		err;
 
-	// console.log("--- resolveExpression");
-	// console.log("SYM",ctx.sym,"STACK",stack);
-
 	function resolveOperation(pr) {
 
 		if (sign) {
@@ -217,7 +214,7 @@ function resolveExpression(ctx, stack, pict, idx, doubleWord) {
 				break;
 
 			case 'ident':
-				const sym= symtab[item.v];
+				const sym= getNSentry(ctx, item.v);
 				if (!sym) {
 					if(ctx.pass==1)
 						return { v: mod ? 0xFF : 0xFFFF, idx, pict, error: false, isWord: !mod, undef: item.v };
@@ -415,8 +412,8 @@ export function getExpression(ctx, s, doubleWord) {
 						return {v: -1, pict, error: 'illegal identifier (opcode '+r.v+')', et: ET_P};
 
 					let isExpr= false;
-					if(ctx.pass==2 && symtab["%locals%"] && symtab["%locals%"].v) {
-						const loc= symtab["%locals%"].v.find(def => def.name == r.v);
+					if(ctx.pass==2 && getNSentry(ctx, "%locals%") && getNSentry(ctx, "%locals%").v) {
+						const loc= getNSentry(ctx, "%locals%").v.find(def => def.name == r.v);
 						if(isExpr= !!loc) {
 							stack.push({type: "num", v: loc.value});
 							idx= r.idx;
@@ -425,7 +422,7 @@ export function getExpression(ctx, s, doubleWord) {
 					}
 
 					if(!isExpr) {
-						if(ctx.pass==2 && typeof symtab[r.v] == 'undefined')
+						if(ctx.pass==2 && typeof getNSentry(ctx, r.v) == 'undefined')
 							return { v: -1, pict, error: 'undefined symbol', undef: r.v, et: ET_C };
 
 						stack.push({type: 'ident', v: r.v});

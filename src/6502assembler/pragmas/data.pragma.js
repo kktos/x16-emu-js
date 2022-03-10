@@ -1,7 +1,7 @@
 import { getExpression } from "../expression.js";
 import { ET_P, ET_S, logError, logLine } from "../log.js";
-import { nextLine } from "../symbol.js";
 import { compile, getHexByte, getHexWord, hexPrefix } from "../utils.js";
+import { readBlock } from "./block.utils.js";
 
 const DATASIZE= {
 	DB: 1,
@@ -48,33 +48,46 @@ function symToArgs(sym, ofs) {
 	return args;
 }
 
-export function hex(ctx) {
+/*
+	- line version
+	.hex <hex bytes>
+
+	- block version
+	.hex
+		<hex bytes>
+	.end
+ */
+export function hex(ctx, pragma) {
+
+	function processHexLine(numbers) {
+		for(const num of numbers) {
+			ctx.addrStr= getHexWord(ctx.pc);
+			ctx.pict= '.db $'+num;
+			if(!/^[0-9A-F]+$/.test(num)) {
+				logError(ctx, ET_P, "Not a valid hexa number");
+				return false;
+			}
+			if(ctx.pass == 2) {
+				let byte= Number.parseInt(num, 16) & 0xFF;
+				compile(ctx, ctx.pc, byte);
+				ctx.asm= getHexByte(byte);
+				ctx.pict= `.DB ${hexPrefix}${ctx.asm}`;
+			}
+			logLine(ctx);
+			ctx.pc++;
+		}
+	}
 
 	if(ctx.sym.length-ctx.ofs<1) {
-		ctx.addrStr= getHexWord(ctx.pc);
-		ctx.pict+= pragma;
-		logError(ctx, ET_S, 'expression expected');
-		return false;
+		const bytes= readBlock(ctx);
+		bytes.forEach( (hexLine) => {
+			processHexLine(hexLine.tokens);
+		});
+		return true;
 	}
 
 	let numbers= symToArgs(ctx.sym, ctx.ofs);
-	for(const num of numbers) {
-		ctx.addrStr= getHexWord(ctx.pc);
-		ctx.pict= '.db $'+num;
-		if(!/^[0-9A-F]+$/.test(num)) {
-			logError(ctx, ET_P, "Not a valid hexa number");
-			return false;
-		}
-		if(ctx.pass == 2) {
-			let byte= Number.parseInt(num, 16) & 0xFF;
-			compile(ctx, ctx.pc, byte);
-			ctx.asm= getHexByte(byte);
-			ctx.pict= `.DB ${hexPrefix}${ctx.asm}`;
-		}
-		logLine(ctx);
-		ctx.pc++;
-	}
-	nextLine(ctx);
+	processHexLine(numbers);
 	return true;
 }
 

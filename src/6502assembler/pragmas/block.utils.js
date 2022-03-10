@@ -1,6 +1,6 @@
 import { logLine } from "../log.js";
 import { isPragmaBlock } from "../pragma.js";
-import { nextLine } from "../symbol.js";
+import { nextLine } from "../tokenizer.js";
 
 export function readBlock(ctx) {
 	const lines= [];

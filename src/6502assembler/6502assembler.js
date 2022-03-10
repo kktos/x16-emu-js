@@ -1,11 +1,12 @@
 import { getExpression, getIdentifier } from "./expression.js";
 import { ET_C, ET_P, ET_S, logError, logLine } from "./log.js";
+import { initNS, isNSentryDefined, NS_GLOBAL, setNSentry } from "./namespace.js";
 import { parsePragma, processPragma } from "./pragma.js";
 import { expandMacro } from "./pragmas/macro.pragma.js";
 import { CPU_CONST, setcpu } from "./pragmas/setcpu.pragma.js";
 import { encodeAscii } from "./pragmas/string.pragma.js";
-import { nextLine, tokenizeNextLine } from "./symbol.js";
 import { ADDRMODE, steptab } from "./tables.js";
+import { nextLine, tokenizeNextLine } from "./tokenizer.js";
 import { commentChar, compile, getHexByte, getHexWord, hexPrefix, pcSymbol } from "./utils.js";
 
 // 6502 assembler
@@ -16,10 +17,7 @@ import { commentChar, compile, getHexByte, getHexWord, hexPrefix, pcSymbol } fro
 //       auto-zeropage addr. default, slightly modernized UI.
 // statics
 
-export let symtab;
-
-let showCodeAddresses=true,
-	codeStore,
+let codeStore,
 	bbcMode=false, redefSyms=false,
 	bbcBlock=false, isHead, anonymousTargets;
 
@@ -35,13 +33,19 @@ let ctx= {
 	options: {
 		autoZpg: true,
 		useIllegals: false,
+		listing: false
 	},
 
 	macros: null,
 
-	code: null,
+	code: {},
 	codeStart: null,
 	codeEnd: null,
+	currentSegment: null,
+	segments: null,
+	currentNS: NS_GLOBAL,
+	namespaces: { [NS_GLOBAL]: {} },
+
 	pc: null,
 	cbmStartAddr: 0,
 
@@ -77,11 +81,12 @@ let ctx= {
 
 // functions
 
-export function assemble(mainFilename, readFile) {
+export function assemble(mainFilename, opts) {
 	return new Promise(resolve => {
 		setTimeout(() => {
-			startAssembly(mainFilename, readFile);
-			resolve({code: ctx.code, start: ctx.codeStart, end: ctx.codeEnd});
+			// const res= startAssembly(mainFilename, opts);
+			// resolve({code: ctx.code, segments: ctx.segments});
+			resolve(startAssembly(mainFilename, opts));
 		}, 0);
 	});
 }
@@ -90,54 +95,69 @@ function log(str) {
 	console.log(str);
 }
 
-function startAssembly(mainFilename, readFile) {
-	symtab= {};
+function startAssembly(mainFilename, opts) {
+	ctx.currentNS= NS_GLOBAL;
+	initNS(ctx);
+
 	codeStore= null;
 
 	ctx.options.autoZpg= true;
+	ctx.options.listing= opts.listing===true ? true : false;
+
 	// ctx.charEncoding= encodeAscii;
-	ctx.comment='';
-	ctx.readFile= (filename) => { const src= readFile(filename); return splitSrc(src); };
+	ctx.comment= "";
+	ctx.readFile= (filename) => { const src= opts.readFile(filename); return src ? splitSrc(src) : null; };
 
 	ctx.codesrc= ctx.readFile(mainFilename);
 	ctx.filename= mainFilename;
+	if(opts.segments)
+		ctx.segments= opts.segments;
+	else {
+		ctx.segments= { CODE: {start:0x1000, end:0xFFFF} };
+		ctx.currentSegment= "CODE";
+		ctx.code["CODE"]= [];
+	}
 
 	let empty= true;
-	for (let i=0; i<ctx.codesrc.length; i++) {
-		if((/\S/).test(ctx.codesrc[i])) {
-			empty=false;
-			break;
+	if(ctx.codesrc)
+		for(let i=0; i<ctx.codesrc.length; i++) {
+			if((/\S/).test(ctx.codesrc[i])) {
+				empty= false;
+				break;
+			}
 		}
-	}
 	if(empty) {
 		log('no source code.');
 		return;
 	}
-	// listingElement.value=listing='pass 1\n\nLINE  LOC          LABEL     PICT\n\n';
-	ctx.listing='pass 1\n\nLINE  LOC          LABEL     PICT\n\n';
 
-	let pass2=false, range;
+	ctx.listing= "pass 1\n\nLINE  LOC          LABEL     PICT\n\n";
 
-	ctx.code= [];
-	ctx.codeStart= 0x10000;
-	ctx.codeEnd= 0;
-	ctx.pass= 1;
+	let pass2= false,
+		range;
+
+
+	// ctx.code= [];
+	// ctx.codeStart= 0x10000;
+	// ctx.codeEnd= 0;
+	// setSegmentOrigin(ctx, 0);
 	ctx.cbmStartAddr= 0;
+
+	ctx.pass= 1;
 	ctx.macros= {};
 
 	setcpu(ctx, "6502");
 
-	symtab["CPU_6502"]={ v: CPU_CONST["6502"], isWord: false, pc: 0, isPrivate: true };
-	symtab["CPU_65X02"]={ v: CPU_CONST["65X02"], isWord: false, pc: 0, isPrivate: true };
-	symtab["CPU_65C02"]={ v: CPU_CONST["65C02"], isWord: false, pc: 0, isPrivate: true };
-
-	symtab["%locals%"]= { v: null, isPrivate: true };
+	setNSentry(ctx, "CPU_6502", { v: CPU_CONST["6502"], isWord: false, pc: 0, isPrivate: true });
+	setNSentry(ctx, "CPU_65X02", { v: CPU_CONST["65X02"], isWord: false, pc: 0, isPrivate: true });
+	setNSentry(ctx, "CPU_65C02", { v: CPU_CONST["65C02"], isWord: false, pc: 0, isPrivate: true });
+	setNSentry(ctx, "%locals%", { v: null, isPrivate: true });
 
 	let pass1= asmPass(ctx);
 
 	if(pass1) {
-		ctx.listing+= '\n';
-		listSymbols();
+		// ctx.listing+= '\nsymbols\n';
+		// ctx.listing+= dumpSymbols().join("\n");
 		ctx.listing+= 'pass 2\n\nLOC   CODE         LABEL     INSTRUCTION\n\n';
 		ctx.pass= 2;
 
@@ -146,81 +166,96 @@ function startAssembly(mainFilename, readFile) {
 			if(ctx.codeStart==0x10000)
 				ctx.codeStart= 0;
 			range= getHexWord(ctx.codeStart)+'..'+getHexWord(ctx.codeEnd);
-			// listCode();
-			if(ctx.code.length) {
+
+			const hasCode= Object.keys(ctx.code).some(k => ctx.code[k].length);
+			if(hasCode)
 				ctx.listing+='\ndone (code: '+range+').';
-			}
-			else {
+			else
 				ctx.listing+='\ndone.\nno code generated.';
-			}
-			// document.getElementById('outputOption').style.visibility='visible';
 		}
 	}
-	log(ctx.listing);
+
+	if(ctx.options.listing)
+		log(ctx.listing);
 
 	if(pass1 && pass2) {
-		if(ctx.code.length) {
+
+		const hasCode= Object.keys(ctx.code).some(k => ctx.code[k].length);
+
+		if(hasCode) {
 			log('6502 Assembler','Assembly complete ('+range+'), ok.');
+			return {code: ctx.code, segments: ctx.segments};
 		}
 		else {
 			log('6502 Assembler','No code generated.');
+			return {error: true, message: "No code generated"};
 		}
 	}
 	else {
 		// listingElement.value+='\nfailed.\n';
 		log('6502 Assembler','Assembly failed (see listing).');
+		return {error: true, message: "Assembly failed"};
 	}
 }
 
-export function listCode() {
-	var s='',
-		ofs=showCodeAddresses? ctx.codeStart%8:0,
+export function dumpCode(ctx, segmentName, wannaShowAddr) {
+	let s= "",
 		fillbyte= 0;
-	if(ctx.code.length) {
-		for (var i= ctx.codeStart-ofs; i<=ctx.codeEnd; i++) {
-			if(i%8==0) {
-				if(showCodeAddresses) s+=getHexWord(i)+': ';
-			}
-			if(i<ctx.codeStart) {
-				s+='.. ';
-			}
-			else {
-				s+=getHexByte(typeof ctx.code[i] == 'undefined'? fillbyte:ctx.code[i] || 0);
-				s+=(i%8==7 || i==ctx.code.length-1)? '\n':' ';
-			}
+
+	const code= ctx.code[segmentName];
+	if(!code || !code.length)
+		return null;
+
+	const codeStart= ctx.segments[segmentName].start;
+	const codeEnd= codeStart + code.length;
+	let ofs= wannaShowAddr? codeStart%8 : 0;
+
+	for(let addr= codeStart-ofs; addr<codeEnd; addr++) {
+		if((addr%8==0) && wannaShowAddr)
+			s+= getHexWord(addr)+': ';
+
+		if(addr<codeStart)
+			s+='.. ';
+		else {
+			s+= getHexByte(typeof code[addr-codeStart] == 'undefined' ? fillbyte : code[addr-codeStart] || 0);
+			s+= (addr%8==7 || addr==codeEnd-1)? '\n':' ';
 		}
 	}
-	storeCode(ctx.codeStart,s, ctx.cbmStartAddr||ctx.codeStart);
 
-	// console.log("---- HEXDUMP");
-	// console.log({codeStart:ctx.codeStart, codeEnd:ctx.codeEnd, code:ctx.code});
-	console.log(s);
-	// document.getElementById('codefield').value=s;
-	// document.getElementById('codeLink').className= code.length? 'visible':'';
-	// document.getElementById('downloadLink').className= code.length? 'visible':'';
+	// storeCode(ctx.codeStart,s, ctx.cbmStartAddr||ctx.codeStart);
+	// console.log(codeStore);
+	return s;
 }
 
-function listSymbols() {
+export function dumpSymbols() {
+	const symbols= [];
 
-	let keys= [];
-	Object
-		.entries(symtab)
-		.filter(([k,v]) => !v.isPrivate)
-		.forEach( ([k,v]) => keys.push(k));
+	function dumpNSSymbols(NSsymbols) {
+		let keys= [];
+		Object
+			.entries(NSsymbols)
+			.filter(([k,v]) => !v.isPrivate)
+			.forEach( ([k,v]) => keys.push(k));
 
-	if(!keys.length)
-		return;
+		keys.sort().forEach( (key) => {
+			const sym = NSsymbols[key];
+			symbols.push(
+							' '+
+							key.padStart(15, " ")+
+							" "+
+							(sym.isWord ||sym.v>0xff? hexPrefix+getHexWord(sym.v):'  '+hexPrefix+getHexByte(sym.v))
+			);
 
-	ctx.listing+= 'symbols\n';
-	keys= keys.sort().forEach( (key) => {
-		const sym = symtab[key];
-		ctx.listing+=	' '+
-						key.padStart(11, " ")+
-						(sym.isWord ||sym.v>0xff? hexPrefix+getHexWord(sym.v):'  '+hexPrefix+getHexByte(sym.v))+
-						'\n';
+		});
+		return symbols;
+	}
 
-	});
-	ctx.listing+='\n';
+	Object.entries(ctx.namespaces).forEach(([NSname, NSsymbols]) => {
+		symbols.push("NS "+NSname);
+		dumpNSSymbols(NSsymbols);
+	})
+
+	return symbols;
 }
 
 function splitSrc(value) {
@@ -304,167 +339,10 @@ function asmPass(ctx) {
 		return { 'pict': pict, 'error': false, 'address': anonymousTargets[idx] };
 	}
 
-	function getAsmExpression(sym, ofs) {
-		var s=sym[ofs];
-		while(sym[ofs+1]=='$') s+=(sym[++ofs]||'')+(sym[++ofs]||'');
-		var funcRE=/([A-Z]+)\(/, matches=funcRE.exec(s);
-		while (matches) {
-			var idx=matches.index,
-				strIdx=idx+matches[1].length+1,
-				s2=s.substring(strIdx);
-			if(matches[1]!='ASC' && matches[1]!='LEN') {
-				return {'error': 'unsupported function "'+matches[1]+'()"', 'pict': s.substring(0,strIdx), 'et': ET_S };
-			}
-			var	r = getBBCBasicString(s2, ')');
-			if(r.error) return { 'pict': s.substring(0,strIdx)+r.ctx.pict, 'error': r.error };
-			if(r.length==0) return { 'pict': s.substring(0,strIdx)+r.ctx.pict, 'error': 'string expected', 'et': ET_P };
-			if(matches[1]=='ASC') {
-				if(r.v.length>1) return {'error': 'illegal quantity, string too long', 'pict': s.substring(0,strIdx)+r.v, 'et': ET_P };
-				s=s.substring(0,idx)+(r.v.length? r.v.charCodeAt(0)&0xff:0)+s.substring(strIdx+r.idx);
-			}
-			else if(matches[1]=='LEN') {
-				s=s.substring(0,idx)+r.v.length+s.substring(strIdx+r.idx);
-			}
-			matches=funcRE.exec(s);
-		};
-		s=s.replace(/\(/g, '[').replace(/\)/g, ']');
-		return {'pict':s, 'error': false, 'ofs': ofs};
-	}
-	function getBBCBasicString(s, stopChar) {
-		s=s.replace(/^\s+/, '').replace(/\s+$/,'');
-		var pict='', i=0, result='', c, mode=0, max=s.length, hasContent=false, chunk;
-		function getArgNum(stopChar) {
-			var chunk='', paren=0, quote=false;
-			while (i<max) {
-				c=s.charAt(i++);
-				if(!quote && (c==stopChar && (c!=')' || paren==0))) break;
-				if(c=='"') quote=!quote;
-				if(quote || (c!=' ' && c!='\t')) chunk+=c;
-				if(!quote) {
-					if(c=='(') paren++;
-					else if(c==')') paren--;
-				}
-			}
-			if(c!=stopChar) return { 'pict': pict+chunk+c, 'v': result, 'error': '"'+stopChar+'" expected', 'et': ET_S};
-			if(!chunk) return { 'pict': pict+stopChar, 'v': result, 'error': 'expression expected', 'et': ET_P};
-			return { 'v': chunk, 'error': false }
-		}
-		while (i<max) {
-			c=s.charAt(i++);
-			pict+=c;
-			if(mode==0) {
-				if(c=='"') {
-					mode=1;
-					continue;
-				}
-				else if(c=='$') {
-					chunk='';
-					while (i<max) {
-						c=s.charAt(i++);
-						pict+=c;
-						if((c<'A' || c>'Z') && c!='%') break;
-						chunk+=c;
-					}
-					if(chunk=='P%') {
-						let l= lastDlrPpct - ctx.pc;
-						if(l>0) {
-							for (let a= ctx.pc; a<lastDlrPpct; a++) result+=String.fromCharCode(ctx.code[a]);
-						}
-						hasContent=true;
-						mode=2;
-					}
-					else return { 'pict': pict, 'v': result, 'error': 'illegal identifier "'+chunk+'"', 'et': ET_P};
-				}
-				else if('&0123456789%@'.indexOf(c)>=0) {
-					return { 'pict': pict, 'v': result, 'error': 'type mismatch', 'et': ET_P};
-				}
-				else if(c>='A' && c<='Z') {
-					chunk=c;
-					while (i<max) {
-						c=s.charAt(i++);
-						if((c<'A' || c>'Z') && c!='$') break;
-						pict+=c;
-						chunk+=c;
-					}
-					if(c=='(') {
-						chunk+=c;
-						pict+=c;
-						//if(i<max) i++;
-					}
-					if(chunk=='CHR$(') {
-						var r=getArgNum(')');
-						if(r.error) return r;
-						r=getAsmExpression([r.v],0);
-						if(r.error) return { 'pict': pict+r.pict, 'v': result, 'error': r.error, 'et': e.et};
-						r= getExpression(ctx, r.pict);
-						if(r.error || r.undef) return { 'pict': pict+r.pict, 'v': result, 'error': r.error, 'et': r.et};
-						pict+=r.pict+')';
-						result+=String.fromCharCode(r.v&0xff);
-						hasContent=true;
-						mode=2;
-						if(i<max && (/^\s*[+-\/\*]\s*[&0123456789%@\(]/).test(s.substring(i))) break;
-						continue;
-					}
-					else if(chunk=='STRING$(') {
-						var r=getArgNum(',');
-						if(r.error) return r;
-						r=getAsmExpression([r.v],0);
-						if(r.error) return { 'pict': pict+r.pict, 'v': result, 'error': r.error, 'et': r.et};
-						var rv= getExpression(ctx, r.pict);
-						if(rv.error || rv.undef) {
-							return { 'pict': pict+rv.pict, 'v': result, 'error': r.error, 'et': r.et};
-						}
-						if(ctx.pass==2 && rv.v<0) return { 'pict': pict+rv.v, 'v': result, 'error': 'illegal quantity', 'et': ET_P};
-						pict+=rv.pict+',';
-						var rs=getBBCBasicString(s.substring(i), ')');
-						if(rs.error) {
-							return { 'pict': pict+rs.pict, 'v': result, 'error': rs.error, 'et': rs.et};
-						}
-						pict+=rs.pict;
-						for (var k=0, kn = Math.min(rv.v,0xff); k<kn; k++) result+=rs.v;
-						i+=rs.idx;
-						hasContent=true;
-						mode=2;
-						if(i<max && (/^\s*[+-\/\*]\s*[&0123456789%@\(]/).test(s.substring(i))) break;
-						continue;
-					}
-					else if(c=='(') {
-						return { 'pict': pict, 'v': result, 'error': 'unsupported function "'+chunk+')"', 'et': ET_S};
-					}
-					else {
-						return { 'pict': pict, 'v': result, 'error': 'unrecognized token "'+chunk+'"', 'et': ET_P};
-					}
-				}
-				else if(c!=' ' && c!='\t') {
-					return { 'pict': pict, 'v': result, 'error': 'illegal character, quote or identifier expected', 'et': ET_P};
-				}
-			}
-			else if(mode==1) {
-				if(c=='"') {
-					hasContent=true;
-					mode=2;
-					continue;
-				}
-				if(c.charCodeAt(0)>255 )return { 'pict': pict, 'v': result, 'error': 'illegal character', 'et': ET_P};
-				result+=c;
-			}
-			if(mode==2 && i<max) {
-				if(stopChar && c==stopChar) break;
-				if(c=='+') {
-					mode=0;
-				}
-				else if(c!=' ' && c!='\t') {
-					return { 'pict': pict, 'v': result, 'error': 'illegal character, "+" expected.', 'et': ET_P};
-				}
-			}
-		}
-		if(mode==0 && hasContent) return { 'pict': pict, 'v': result, 'error': 'string expected', 'et': ET_P };
-		if(mode==1) return { 'pict': pict, 'v': result, 'error': 'quote expected', 'et': ET_S };
-		return { 'pict': pict, 'v': result,'error': false, 'idx': i };
-	}
+	ctx.pc= ctx.currentSegment ? ctx.segments[ctx.currentSegment].start : 0;
 
 	bbcBlock= ctx.convertPi= false;
-	ctx.srcLineIdx= ctx.srcc= ctx.pc= ctx.srcLineNumber= 0;
+	ctx.srcLineIdx= ctx.srcc= ctx.srcLineNumber= 0;
 	isHead= true;
 	ctx.sym= tokenizeNextLine(ctx);
 	ctx.labelStr= '         ';
@@ -483,15 +361,17 @@ function asmPass(ctx) {
 			if(ctx.comment) {
 				if(isHead) {
 					if(ctx.pass==1) {
-						ctx.srcLnStr=''+ctx.srcLineNumber;
-						while (ctx.srcLnStr.length<4) ctx.srcLnStr=' '+ctx.srcLnStr;
-						ctx.listing+=ctx.srcLnStr+'               '+ctx.comment+'\n';
+						ctx.srcLnStr= ''+ctx.srcLineNumber;
+						while (ctx.srcLnStr.length<4)
+							ctx.srcLnStr= ' '+ctx.srcLnStr;
+						ctx.listing+= ctx.srcLnStr+'               '+ctx.comment+'\n';
 					}
 					else {
-						ctx.listing+='                   '+ctx.comment+'\n';
+						ctx.listing+= '                   '+ctx.comment+'\n';
 					}
-					if(!ctx.pageHead) ctx.pageHead= ctx.comment;
-					headComments=true;
+					if(!ctx.pageHead)
+						ctx.pageHead= ctx.comment;
+					headComments= true;
 				}
 				else logLine(ctx);
 				ctx.comment='';
@@ -583,7 +463,7 @@ function asmPass(ctx) {
 					return false;
 				}
 
-				if(symtab[ident] && !redefSyms) {
+				if(isNSentryDefined(ctx, ident, "main") && !redefSyms) {
 					ctx.pict+=ctx.sym[0];
 					if(ctx.sym[1]=='=') {
 						ctx.pict+= ' =';
@@ -610,7 +490,7 @@ function asmPass(ctx) {
 
 				if(arg=='*') {
 					ctx.pict+= ctx.pass==1 ? arg : pcSymbol;
-					r={ 'v': ctx.pc, 'isWord': false, 'pc': ctx.pc };
+					r={ v: ctx.pc, isWord: false, pc: ctx.pc };
 				}
 				else {
 
@@ -630,17 +510,17 @@ function asmPass(ctx) {
 
 				if(ctx.sym.length>ctx.ofs) {
 					if(ctx.sym.length==ctx.ofs+1 && ctx.sym[ctx.ofs]=='W') { // ignore 'W' suffix
-						ctx.pict+=' '+(bbcMode && !bbcBlock? ':REM ':commentChar)+'w';
+						ctx.pict+= ' '+commentChar+'w';
 					}
 					else {
-						ctx.pict+=' '+ctx.sym[ctx.ofs].charAt(0);
+						ctx.pict+= ' '+ctx.sym[ctx.ofs].charAt(0);
 						logError(ctx, ET_S,'unexpected extra characters');
 						return false;
 					}
 				}
 
 				if(ctx.pass==1) {
-					symtab[ident]= r;
+					setNSentry(ctx, ident, r);
 				}
 				else {
 					ctx.asm= ident+' = ' + hexPrefix + ((r.isWord || r.v>0xff) ? getHexWord(r.v) : getHexByte(r.v));
@@ -675,7 +555,7 @@ function asmPass(ctx) {
 				ctx.labelStr= labelPrefix+ident+' ';
 
 				if(ctx.pass==1) {
-					symtab[ident]={ 'v': ctx.pc, 'isWord': false, 'pc': ctx.pc };
+					setNSentry(ctx, ident, { v: ctx.pc, isWord: false, pc: ctx.pc });
 				}
 
 				if(ctx.sym.length>=ctx.ofs+1) {
@@ -724,7 +604,7 @@ function asmPass(ctx) {
 			// opcode
 			let opc= ctx.sym[ctx.ofs],
 				dot= ctx.sym[ctx.ofs].indexOf('.'),
-				ext='',
+				ext= '',
 				opctab,
 				instr,
 				addr,
@@ -997,11 +877,9 @@ function storeCode(addr, code, startAddr) {
 	if(code) {
 		var id=new Date().getTime().toString(36);
 		codeStore = {
-			'type': '6502CodeTransfer',
 			'id': id,
 			'addr': addr,
 			'code': code,
-			'bbcMode': bbcMode,
 			'startAddr': startAddr
 		};
 	}
@@ -1009,18 +887,3 @@ function storeCode(addr, code, startAddr) {
 		codeStore=null;
 	}
 }
-
-	// 'assemble': assemble,
-	// 'setup': setup,
-	// 'start': assemble,
-	// 'setAddressDisplay': setAddressDisplay,
-	// 'setBBCMode': setBBCMode,
-	// 'showBBCInfo': showBBCInfo,
-	// 'loadFile': loadFile,
-	// 'closeDialog': hideDialog,
-	// 'transferCodeToEmulator': transferCodeToEmulator,
-	// 'loadSource': loadSource,
-	// 'getBinary': getBinary
-
-
-// eof

@@ -1,5 +1,5 @@
 import { ET_P, ET_S, logError, logLine } from "../log.js";
-import { nextLine } from "../symbol.js";
+import { nextLine } from "../tokenizer.js";
 import { compile, getHexByte, getHexWord } from "../utils.js";
 import { processNumber } from "./data.pragma.js";
 
@@ -68,7 +68,8 @@ function processString(ctx, text, pragma, options) {
 			if (cbBuffer.length==3) {
 				ctx.asm= cbBuffer.join(' ');
 				cbBuffer.length=0;
-				if (i==tmax-1 && txt.charAt(tmax)=='"') ctx.pict+='"';
+				if (i==tmax-1 && txt.charAt(tmax)=='"')
+					ctx.pict+= '"';
 				logLine(ctx);
 				ctx.addrStr= getHexWord(ctx.pc);
 				ctx.pict+= '.'+pragma+' "';

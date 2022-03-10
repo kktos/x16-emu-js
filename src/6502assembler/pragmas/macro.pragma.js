@@ -1,7 +1,7 @@
-import { symtab } from "../6502assembler.js";
 import { getExpression } from "../expression.js";
 import { ET_S, logError, logLine } from "../log.js";
-import { nextLine, registerNextLineHandler } from "../symbol.js";
+import { getNSentry } from "../namespace.js";
+import { nextLine, registerNextLineHandler } from "../tokenizer.js";
 import { readBlock } from "./block.utils.js";
 
 export function processMacro(ctx, pragma) {
@@ -46,7 +46,7 @@ export function processMacro(ctx, pragma) {
 
 function nextMacroLine(ctx, macroCtx) {
 	if(macroCtx.lineIdx >= macroCtx.lines.length) {
-		symtab["%locals%"].v= null;
+		getNSentry(ctx, "%locals%").v= null;
 		return false;
 	} else {
 		const line= macroCtx.lines[macroCtx.lineIdx++];
@@ -75,7 +75,7 @@ export function expandMacro(ctx, name) {
 			};
 			registerNextLineHandler(name, () => nextMacroLine(ctx, macroCtx));
 
-			symtab["%locals%"].v= macroCtx.locals;
+			getNSentry(ctx, "%locals%").v= macroCtx.locals;
 
 			for(let idx= ctx.ofs; idx< ctx.sym.length; idx++) {
 				const result= getExpression(ctx, ctx.sym[idx]);
