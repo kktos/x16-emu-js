@@ -1,5 +1,5 @@
 import MyWorker from "./cpu/controller.js?worker";
-import Debugger from "./debugger.js";
+import Debugger from "./debugger/debugger.js";
 import ENV from "./env.js";
 import KeyMap from "./keymap.js";
 
@@ -17,6 +17,8 @@ export default class VM {
 		this.machine= machine;
 		this.canvas= canvas;
 		this.isRunning= true;
+
+		this.diskImages= [];
 
 		this.gc= {
 			viewport: {
@@ -73,27 +75,43 @@ export default class VM {
 
 		this.setupMemoryMap();
 
-		this.sendMessage("addHook", {addr: 0xC600});
+		this.sendMessage("addHook", {bank:0, addr: 0xC600});
+		this.sendMessage("addHook", {bank:0, addr: 0xC65C});
+		this.sendMessage("addHook", {bank:0, addr: 0xBD00});
 
 	}
 
 	setupMemoryMap() {
 		this.machine.memory.map.forEach(({bank, addr, data}) => {
-			this.memWrite(bank, addr, data);
+			this.memWriteHexa(bank, addr, data);
 		});
 	}
 
-	memWrite(bank, addr, value) {
-		this.sendMessage("memWrite", {
+	memWriteHexa(bank, addr, hexString) {
+		this.sendMessage("memWriteHexa", {
 			bank,
 			addr,
-			value
+			hexString
 		});
 	}
 
-	memRead(addr) {
-
+	memWriteBin(bank, addr, values) {
+		return this.waitMessage("memWriteBin", {
+			bank,
+			addr,
+			values
+		});
 	}
+
+	setDisk(diskID, imgData) {
+		this.diskImages[diskID]= imgData;
+		// console.log("setDisk",{diskID, imgData});
+	}
+
+	// async memRead(addr) {
+	// 	const byte= await this.waitMessage("memReadByte", {addr});
+	// 	return byte;
+	// }
 
 	setSpeed(multiplier) {
 		// this.cpuMultiplier= multiplier;
@@ -106,33 +124,36 @@ export default class VM {
 	async loop(dt= 0) {
 		acc+= (dt - lastTime) / 1000;
 		while(acc > inc) {
-			this.video.update(this.gc);
+			this.video.update(this.gc, !this.isRunning);
 			this.gc.tick++;
 			this.sound.doTick( await this.waitMessage("cycles") );
 			acc-= inc;
 		}
 		lastTime= dt;
 
-		if(this.isRunning) {
-			requestAnimationFrame((dt)=> this.loop(dt));
+		requestAnimationFrame((dt)=> this.loop(dt));
 
+		if(this.isRunning) {
 			this.waitMessage("mhz").then(data=>{
 				speedIdx= speedIdx+1 % speeds.length;
 				speeds[speedIdx]= data/1_000;
 				const avg= speeds.reduce((acc, cur)=>acc+cur, 0) / speeds.length;
 				this.gc.mhz= Math.round((avg + Number.EPSILON) * 100) / 100
 			});
-
 		}
-		// setTimeout(() =>this.debugger.update() , 0);
-		// this.debugger.update();
 
 	}
 
-	handleMessage(msg) {
+	async handleMessage(msg) {
 		// console.log("handleMessage", msg);
 
 		switch(msg.cmd) {
+			case "clog":
+				console.clog(msg.data.color, "### WORKER", msg.data);
+				break;
+			case "log":
+				console.log("### WORKER", msg.data);
+				break;
 			case "video":
 				this.video.handleMessage(msg.data);
 				break;
@@ -140,20 +161,16 @@ export default class VM {
 				this.sound.handleMessage(msg.data);
 				break;
 			case "stopped":
+				// console.log("STOPPED", msg.PC.toString(16));
 				this.debugger.pause();
 				break;
 
 			case "hooked":
-				console.log("hooked", msg.data.PC.toString(16), msg.data);
-				switch(msg.data.PC) {
-					case 0xC600:
-						this.sendMessage("register", {register:"PC", value:0x801});
-						setTimeout( () => this.sendMessage("run"), 0);
-						break;
-
-					default:
-						this.debugger.pause();
-						break;
+				if(this.machine.hooks?.(this, msg.data)) {
+					setTimeout( () => this.sendMessage(msg.data.caller), 0);
+				} else {
+					this.debugger.pause();
+					this.debugger.update();
 				}
 				break;
 		}
@@ -164,48 +181,12 @@ export default class VM {
 		return new Promise(resolve => {
 			const {port1, port2}= new MessageChannel();
 			port1.onmessage= ({data:{cmd, id, data}}) => {
-
-				// if(!["mhz","cycles"].includes(cmd))
-				// 	console.log("waitMessage response", cmd, id, data);
-
 				resolve(data);
 			};
-
-			// if(!["mhz","cycles"].includes(cmd))
-			// 	console.log("waitMessage send", cmd, msgID, data);
-
 			this.cpuWorker.postMessage({cmd, id: msgID, data}, [port2]);
 		});
 	}
-/*
-	waitMessage0(cmd, data= null) {
-		const msgID= msgcounter++;
-		return new Promise(resolve => {
 
-			if(!this.isRunning)
-				console.log("waitMessage", "post", {cmd, id: msgID, data});
-
-			const listener= this.cpuWorker.addEventListener('message', (e) => {
-
-				if(!this.isRunning)
-					console.log("waitMessage", "onMessage", e.data);
-
-				const response= e.data;
-				if(response.id!=msgID) {
-					console.error("waitMessage", "received wrong answer");
-					console.error("waitMessage", "post", {cmd, id: msgID, data});
-					console.error("waitMessage", "response", response);
-				}
-				resolve(response);
-
-				// this.cpuWorker.removeEventListener('message', listener);
-			}, { once: true });
-
-			this.cpuWorker.postMessage({cmd, id: msgID, data});
-
-		})
-	}
-*/
 	sendMessage(cmd, data= null) {
 		this.cpuWorker.postMessage({cmd, id: msgcounter++, data});
 	}
@@ -219,7 +200,7 @@ export default class VM {
 	}
 
 	updateCPUregister(register, value) {
-		this.sendMessage("register", {register, value});
+		this.sendMessage("register", {[register]: value});
 	}
 
 	updateVideo() {
@@ -227,7 +208,8 @@ export default class VM {
 	}
 
 	async pause() {
-		console.log( "stopped at", (await this.waitMessage("stop")).toString(16) );
+		await this.waitMessage("stop");
+		// console.log( "stopped at", (await this.waitMessage("stop")).toString(16) );
 		this.isRunning= false;
 	}
 
@@ -275,9 +257,12 @@ export default class VM {
 			"keyup", "keydown",
 		].forEach(type=> machine.addEventListener(type, this));
 
-		this.sendMessage("reset");
+		await this.waitMessage("reset");
 
-		this.play();
+		this.debugger.setupUI();
+		this.debugger.pause();
+
+		// this.play();
 
 	}
 

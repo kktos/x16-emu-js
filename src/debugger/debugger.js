@@ -1,6 +1,8 @@
-import { assemble } from "./6502assembler/6502assembler.js";
-import Disassembler from "./cpu/disassembler/disassembler.js";
-import * as utils from "./utils.js";
+import { assemble } from "../6502assembler/6502assembler.js";
+import * as utils from "../utils.js";
+import setupConsole from "./console.js";
+import Disassembler from "./disassembler/disassembler.js";
+import MemViewer from "./mem.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
 // up to the target by counting all "common" instructions as a point. The highest-scoring run of
@@ -24,23 +26,38 @@ export default class Debugger {
 
 		this.stepCount= Infinity;
 		this.stopOnOpcode= 0;
-		this.dumpMemAddr= 0;
-		this.dumpMemBank= 0;
 
+		this.setup();
+
+		window.STOP= () => {
+			const cycles_count= vm.waitMessage("stop");
+			console.log("STOPPED:", cycles_count);
+			vm.isRunning= false;
+			this.updateBtns(true);
+			this.update();
+		};
+
+		// this.setupUI();
+	}
+
+	async setup() {
 		const bps= JSON.parse(localStorage.getItem(`${id}-bps`));
 		this.breakpoints= bps && Array.isArray(bps) ? bps : [];
-		this.vm.sendMessage("initBP",{list: this.breakpoints});
 
-		this.setupUI();
-
+		await this.vm.waitMessage("initBP",{list: this.breakpoints});
 	}
 
 	setupUI() {
 		this.uiroot= document.querySelector("#debugger");
 		this.UIstack= this.uiroot.querySelector("#stack");
-		this.UImem= this.uiroot.querySelector("#mem");
 		this.UIdisasm= this.uiroot.querySelector("#disasm");
 		this.UIbps= this.uiroot.querySelector("#bps");
+
+		setupConsole(this.uiroot.querySelector(".log"));
+
+		this.editValueDlg= this.uiroot.querySelector("#editValueDlg");
+
+		this.diskName= this.uiroot.querySelector("#btns #diskname");
 
 		this.registers= {
 			pc: this.uiroot.querySelector("#registers #PC"),
@@ -51,12 +68,14 @@ export default class Debugger {
 			p: this.uiroot.querySelector("#registers #P")
 		}
 
+
+		this.mem= new MemViewer(this, this.uiroot.querySelector("#mem"), DISASM_LINES_COUNT);
+
+		this.UIdisasm.addEventListener("click", (e)=> this.onClickDisasm(e));
+
 		this.uiroot
 			.querySelector("#registers")
 			.addEventListener("click", (e)=> this.onClickRegister(e));
-
-		this.UImem.addEventListener("wheel", (e) => this.onPageMem(e), {passive: true})
-		this.UImem.addEventListener("click", (e)=> this.onClickMem(e));
 
 		this.UIbps.addEventListener("click", (e)=> this.onClickBreakpoints(e));
 
@@ -82,6 +101,10 @@ export default class Debugger {
 				this.vm.setSpeed(e.target.value);
 				break;
 		}
+	}
+
+	getValueDlg() {
+		this.editValueDlg.showModal();
 	}
 
 	async handleDirectoryEntry( dirHandle, out ) {
@@ -134,8 +157,8 @@ export default class Debugger {
 			case "boot-disk": {
 				const [fileHandle] = await showOpenFilePicker();
 				const file = await fileHandle.getFile();
-				const buffer = await file.arrayBuffer();
-				console.log(buffer);
+				this.vm.setDisk(0, new Uint8Array(await file.arrayBuffer()));
+				this.diskName.textContent = fileHandle.name;
 				break;
 			}
 
@@ -165,10 +188,15 @@ export default class Debugger {
 				this.vm.step();
 				this.update();
 				break;
+
+			case "clear-log":
+				console.clear();
+				break;
 		}
 	}
 
 	pause() {
+		console.log("debugger pause()");
 		this.updateBtns(true);
 		this.vm.pause();
 		this.update();
@@ -193,34 +221,13 @@ export default class Debugger {
 			});
 	}
 
-	onPageMem(e) {
-		this.dumpMemAddr+= 16 * (e.deltaY>0?1:-1);
-		this.dumpMemAddr&= 0xFFFF;
-		this.updateMem();
-	}
+	onClickDisasm(e) {
+		const instructionID= e.target.parentElement.id;
+		const bank= parseInt(document.querySelector("#"+instructionID+" .bank").attributes["data-bank"]?.value, 16);
+		const addr= parseInt(document.querySelector("#"+instructionID+" .addr").attributes["data-addr"]?.value, 16);
 
-	onClickMem(e) {
-		let value;
-		if(e.target.className == "value") {
-			const addrStr= e.target.parentElement.id;
-			const parts= addrStr.split(":");
-			const bank= parseInt("0x"+parts[0]);
-			const addr= parseInt("0x"+parts[1]) + Number(e.target.id);
-
-			value= parseInt(prompt(utils.hexbyte(bank)+":"+utils.hexword(addr) + ": VALUE ? (as hexa value)"), 16);
-			if(isNaN(value))
-				return;
-			this.memory[bank*0x10000 + addr]= value & 0xFF;
-
-			this.vm.updateVideo();
-		} else {
-			value= parseInt(prompt("ADDRESS ? (as hexa value)"), 16);
-			if(isNaN(value))
-				return;
-			this.dumpMemAddr= value & 0xFFFF;
-			this.dumpMemBank= value>>16;
-		}
-		this.updateMem();
+		if(!isNaN(bank) && !isNaN(addr))
+			this.toggleBreakpoint(bank*0x10000 + addr);
 	}
 
 	onClickRegister(e) {
@@ -239,30 +246,40 @@ export default class Debugger {
 	}
 
 	onClickBreakpoints(e) {
-		const currentValue= e.target.id<this.breakpoints.length ? this.breakpoints[e.target.id] : null;
-		let value= prompt("Enter Breakpoint address", currentValue ? utils.hexword(currentValue) : "");
-		if(value=="" && currentValue) {
-			this.vm.sendMessage("removeBP",{addr: currentValue});
-			const idx= this.breakpoints.indexOf(currentValue);
+		const bpIdx= e.target.parentElement.id;
+		switch(e.target.className) {
+			case "bpn": {
+				if(bpIdx < this.breakpoints.length) {
+					this.toggleBreakpoint(this.breakpoints[bpIdx]);
+				}
+				break;
+			}
+			case "bpa": {
+				const currentValue= bpIdx<this.breakpoints.length ? this.breakpoints[bpIdx] : null;
+				let value= prompt("Enter Breakpoint address", currentValue ? utils.hexword(currentValue) : "");
+				value= parseInt(value,16);
+				if(!isNaN(value) && value != currentValue) {
+					if(currentValue)
+						this.toggleBreakpoint(currentValue);
+					this.toggleBreakpoint(value);
+				}
+				break;
+			}
+		}
+	}
+
+	toggleBreakpoint(addr) {
+		const idx= this.breakpoints.indexOf(addr);
+		if(idx>=0) {
+			this.vm.sendMessage("removeBP",{addr});
 			this.breakpoints.splice(idx, 1);
 		} else {
-			value= parseInt(value, 16);
-			this.vm.sendMessage("addBP",{addr: value});
-			this.breakpoints.push(value);
+			this.vm.sendMessage("addBP",{addr});
+			this.breakpoints.push(addr);
 		}
 		localStorage.setItem(`${id}-bps`, JSON.stringify(this.breakpoints));
 		this.updateBreakpoints();
-}
-
-	// onInstruction(pc, opcode) {
-	// 	return 	!this.stepCount--
-	// 			|| opcode == 0x00
-	// 			|| (this.stopOnOpcode? opcode == this.stopOnOpcode : false);
-	// }
-
-	// step() {
-	// 	this.stepCount= 1;
-	// }
+	}
 
 	stop() {
 		this.stopOnOpcode= 0;
@@ -277,7 +294,7 @@ export default class Debugger {
 			let score= 0;
 			let addr= startingPoint & 0xffff;
 			while (addr < address) {
-				let result= this.disassembler.disassemble(this.dumpMemBank, addr, cpuState);
+				let result= this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
 				if (result[0] === cpuState.PC) score += 10; // huge boost if this instruction was executed
 				if (result[0].match(commonInstructions) && !result[0].match(uncommonInstrucions)) {
 					score++;
@@ -296,11 +313,15 @@ export default class Debugger {
 	}
 
 	updateDisasm(cpuState) {
-		const buildLine= (addr, asm, comment, selected= false) => {
+		const buildLine= (lineID, addr, disasm, comment, selected= false) => {
+			const bank= utils.hexbyte(this.mem.dumpMemBank);
+			addr= utils.hexword(addr);
 			return `
 				<div class="line ${selected?"selected":""}">
-					<div class="instruction">
-					${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}: ${asm}
+					<div class="instruction" id="inst${lineID}">
+						<div class="bank" data-bank="${bank}"></div>
+						<div class="addr" data-addr="${addr}"></div>
+						<div class="disasm">${disasm}</div>
 					</div>` +
 					(comment ?
 						`<div class="comment">${comment}</div>`
@@ -312,33 +333,22 @@ export default class Debugger {
 
 		let disasmStr= "";
 		let addr= cpuState.PC;
+		let lineID= 0;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			const rez= this.disassembler.disassemble(this.dumpMemBank, addr, cpuState);
-			disasmStr+= buildLine(addr, rez[0], rez[2], addr==cpuState.PC);
+			const rez= this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
+			disasmStr+= buildLine(lineID, addr, rez[0], rez[2], addr==cpuState.PC);
 			addr= rez[1];
+			lineID++;
 		}
 		addr= cpuState.PC;
 		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
 			addr= this.prevInstruction(cpuState, addr);
-			const rez= this.disassembler.disassemble(this.dumpMemBank, addr, cpuState);
-			disasmStr= buildLine(addr, rez[0], rez[2]) + disasmStr;
+			const rez= this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
+			disasmStr= buildLine(lineID, addr, rez[0], rez[2]) + disasmStr;
+			lineID++;
 		}
 
 		this.UIdisasm.innerHTML= disasmStr;
-	}
-
-	updateMem() {
-		let dumpStr= "";
-		for(let line= 0; line<DISASM_LINES_COUNT; line++) {
-			const addr= (this.dumpMemAddr + line*16) & 0xFFFF;
-			dumpStr+= `<div class="addr" id="${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}">${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}:`;
-			for(let column= 0; column<16; column++)
-				dumpStr+= 	` <span class="value" id="${column}">` +
-								utils.hexbyte(this.memory[(this.dumpMemBank*0x10000)+addr+column]) +
-							"</span>";
-			dumpStr+= "</div>";
-		}
-		this.UImem.innerHTML= dumpStr;
 	}
 
 	updateStack(cpuState) {
@@ -358,7 +368,8 @@ export default class Debugger {
 		let dumpStr= "";
 		for(let line= 0; line<10; line++) {
 			dumpStr+= `<div id="${line}">
-							BP${line} ${line< this.breakpoints.length ? utils.hexword(this.breakpoints[line]) : ""}
+							<div class="bpn">BP${line}</div>
+							<div class="bpa">${line< this.breakpoints.length ? utils.hexword(this.breakpoints[line]) : ""}</div>
 						</div>`;
 		}
 		this.UIbps.innerHTML= dumpStr;
@@ -379,12 +390,14 @@ export default class Debugger {
 
 	async update() {
 		const cpuState= await this.vm.getCPUstate();
+		// console.log("debugger update",cpuState);
 		this.updateStack(cpuState);
 		this.updateBreakpoints();
 		this.updateRegisters(cpuState);
-		this.updateMem();
+		this.mem.update();
 		this.updateDisasm(cpuState);
 
+		console.flush();
 	}
 
 }

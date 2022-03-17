@@ -42,7 +42,8 @@
 			<input type="number" id="speed" value="1" step="0.1">
 			<div class="label">MHz</div>
 			<div id="asm-start" class="btn">ASSEMBLER</div>
-			<div id="boot-disk" class="btn">DISK</div>
+			<div id="boot-disk" class="btn">DISK <span id="diskname"></span></div>
+			<div id="clear-log" class="btn">CLEAR LOG</div>
 		</div>
 		<div class="asm">
 			<div id="btns">
@@ -55,6 +56,23 @@
 				<pre id="editor" contenteditable="true"></pre>
 			</div>
 		</div>
+		<div class="log"></div>
+		<dialog id="editValueDlg">
+			<form method="dialog">
+			  <p><label>Favorite animal:
+				<select>
+				  <option></option>
+				  <option>Brine shrimp</option>
+				  <option>Red panda</option>
+				  <option>Spider monkey</option>
+				</select>
+			  </label></p>
+			  <menu>
+				<button value="cancel">Cancel</button>
+				<button id="confirmBtn" value="default">Confirm</button>
+			  </menu>
+			</form>
+		  </dialog>
 	</div>
     <script type="module" src="/src/main.js"></script>
 

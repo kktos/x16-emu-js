@@ -1,3 +1,4 @@
+import processHooks from "../apple2/hooks.js";
 import { CxINTROM, CxSLOTROM, ROM } from "./applewin.rom";
 import HGR_IMG from "./hgr-img";
 import Sound from "./sound.js";
@@ -33,9 +34,19 @@ const machine= {
 	name: "Apple //e",
 
 	memory: {
-		size: 64 * 1024 * 2,
-		bank: 2,
+		size: 64 * 1024 * 4,
+		bank: 4,
 		map: [
+			{
+				bank: 2,
+				addr: 0x0000,
+				data: `02 02 02 02 02 02 02`
+			},
+			{
+				bank: 3,
+				addr: 0x0000,
+				data: `03 03 03 03 03 03 03`
+			},
 			{
 				bank: 1,
 				addr: 0xC100,
@@ -87,8 +98,9 @@ const machine= {
 		],
 	},
 
-	debuggerOnBRK: false,
+	debuggerOnBRK: true,
 	busSrcFile: "apple2/bus.js",
+	hooks: processHooks,
 	Video,
 	Sound
 };

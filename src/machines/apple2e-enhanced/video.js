@@ -297,7 +297,7 @@ export default class Video {
 			this.renderText40Mixed(ctx);
 	}
 
-	buildHGRScreenPart(canvas, part) {
+	buildHGRScreenPart(part) {
 
 		let buffer= this.cacheHGR[part];
 		if(!buffer) {
@@ -430,10 +430,11 @@ export default class Video {
 
 		this.cacheHGR.forEach((img, part) => {
 
-			if(this.cacheHGRstate[part]) {
-				this.cacheHGRstate[part]= false;
-				this.buildHGRScreenPart(ctx.canvas, part);
-			}
+			// if(this.cacheHGRstate[part]) {
+			// 	this.cacheHGRstate[part]= false;
+			// 	this.buildHGRScreenPart(part);
+			// }
+			this.buildHGRScreenPart(part);
 
 			if(img)
 				ctx.drawImage(img, 0, part*155, 700, 155);
@@ -617,7 +618,7 @@ export default class Video {
 
 	// }
 
-	update({tick, mhz, viewport:{ctx, canvas}}) {
+	update({tick, mhz, viewport:{ctx, canvas}}, isVmPaused) {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
 
@@ -632,13 +633,22 @@ export default class Video {
 				this.renderLowGraphic(ctx);
 				break;
 			case MODE.HGR:
+				// this.renderHighGraphic_old(ctx);
 				this.renderHighGraphic(ctx);
 				break;
 		}
 
-		const e = performance.now();
 		ctx.fillStyle="red";
 		ctx.font = '16px monospace';
+
+		if(isVmPaused) {
+			ctx.fillText(
+				`PAUSED ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`,
+				10, canvas.height-10);
+			return;
+		}
+
+		const e = performance.now();
 		ctx.fillText(
 			`${(e - s).toFixed(2)}ms ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`,
 			10, canvas.height-10);

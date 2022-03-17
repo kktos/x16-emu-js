@@ -2,11 +2,13 @@ import * as utils from "../../utils.js";
 import instructions from "./instructions";
 
 function formatAddr(addr) {
-	return "<span class='instr_mem_ref'>$" + utils.hexword(addr) + "</span>";
+	// return "<span class='instr_mem_ref'>$" + utils.hexword(addr) + "</span>";
+	return utils.hexword(addr);
 }
 
 function formatJumpAddr(addr) {
-	return "<span class='instr_instr_ref'>$" + utils.hexword(addr) + "</span>";
+	// return "<span class='instr_instr_ref'>$" + utils.hexword(addr) + "</span>";
+	return utils.hexword(addr);
 }
 
 function disByte(byteData)
@@ -102,14 +104,21 @@ export default class Disassembler {
 
 				case "%": {
 					const destAddr = this.readbyte(bank, addr + len) | (this.readbyte(bank, addr + len + 1) << 8);
-					const isFnCall = ["JMP", "JSR"].includes(op);
-					if(!isFnCall)
-						switch(addrMode) {
-							case "%": {
-								comment= `$${utils.hexbyte(this.readbyte(bank, destAddr))}`;
-								break;
-							}
+					const isFnCall = op[0] == "J"; //["JMP", "JSR"].includes(op);
+
+					let finalAddr;
+					switch(addrMode) {
+						case "(%)": {
+							finalAddr= utils.hexword(this.readbyte(bank, destAddr) | (this.readbyte(bank, destAddr + 1) << 8));
+							break;
 						}
+						case "%": {
+							finalAddr= !isFnCall ? utils.hexbyte(this.readbyte(bank, destAddr)) : null;
+							break;
+						}
+					}
+					if(finalAddr)
+						comment= `$${finalAddr}`;
 
 					ret_str+= isFnCall ? formatJumpAddr(destAddr) : formatAddr(destAddr);
 					len+= 2;

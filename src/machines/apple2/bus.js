@@ -15,8 +15,10 @@ $C004 W RAMWRTOFF Write enable main memory from $0200-$BFFF
 $C005 W RAMWRTON Write enable aux memory from $0200-$BFFF
 $C006 W INTCXROMOFF Enable slot ROM from $C100-$CFFF
 $C007 W INTCXROMON Enable main ROM from $C100-$CFFF
+
 $C008 W ALZTPOFF Enable main memory from $0000-$01FF & avl BSR
 $C009 W ALTZPON Enable aux memory from $0000-$01FF & avl BSR
+
 $C00A W SLOTC3ROMOFF Enable main ROM from $C300-$C3FF
 $C00B W SLOTC3ROMON Enable slot ROM from $C300-$C3FF
 
@@ -51,6 +53,8 @@ $C01C R7 PAGE2 1=video page2 selected or aux
 $C01D R7 HIRES 1=high resolution graphics 0=low resolution
 $C01E R7 ALTCHARSET 1=alt character set on 0=alt char set off
 $C01F R7 80COL 1=80 col display on 0=80 col display off
+
+$C073 W BANKSEL RAMworks-style Aux RAM Card bank select
 
 "Language Card" area Switches
 Bank 1 and Bank 2 here are the 4K banks at $D000-$DFFF. The
@@ -154,6 +158,16 @@ const SWITCHES = {
 	// R7 SLOTC3ROM 1=slot $C3 ROM active 0=main $C3 ROM active
 	SLOTC3ROM: 0xC017,
 
+
+	// W Enable main memory from $0000-$01FF & $D000-$FFFF
+	ALZTPOFF: 0xC008,
+	// W Enable aux memory from $0000-$01FF & $D000-$FFFF
+	ALTZPON: 0xC009,
+	// R7 ALTZP 1=aux $0000-$1FF+auxBSR 0=main available
+	ALTZP: 0xC016,
+
+	BANKSEL: 0xC073,
+
 	SLOT7F1: 0xC0F1,
 
 };
@@ -168,17 +182,21 @@ export default class Bus {
 		this.readBank= 0;
 		this.writeBank= 0;
 		this.bankSize= 64 * 1024;
+		this.bankSelected= 1;
 		this.videoPage= 0;
 		this.col80On= false;
 		this.store80On= false;
 		this.altCharsetOn= false;
 		this.cxMainRomOn= false;
+		this.altZPOn= false;
 		this.graphicOn= false;
 		this.HiResOn= false;
 		this.MixedOn= false;
+		this.lastBankUsed= 0;
 	}
 
 	_read(bank, addr) {
+		this.lastBankUsed= bank;
 		return this.ram[(bank*this.bankSize) + (addr & 0xFFFF)];
 	}
 
@@ -191,8 +209,10 @@ export default class Bus {
 
 		// $0000-$01FF
 		if(addr<0x0200) {
-			return this._read(0, addr);
+			return this._read(this.altZPOn ? this.bankSelected : 0, addr);
 		}
+
+		// banked memory
 		// $0200-$BFFF
 		if(addr<0xC000) {
 
@@ -203,8 +223,11 @@ export default class Bus {
 
 			return this._read(this.readBank, addr);
 		}
+
+		// Language Card
 		// $D000-$FFFF
 		if(addr>0xCFFF) {
+			// should be driven by this.altZPOn
 			return this._read(0, addr);
 		}
 
@@ -227,6 +250,10 @@ export default class Bus {
 
 			case SWITCHES.INTCXROM:
 				value= this.cxMainRomOn ? 0x80 : 0;
+				break;
+
+			case SWITCHES.ALTZP:
+				value= this.altZPOn ? 0x80 : 0;
 				break;
 
 			case SWITCHES.PAGE2ON:
@@ -314,6 +341,11 @@ export default class Bus {
 
 		if(addr<0xC000) {
 
+			if(addr < 0x200) {
+				this._write(this.altZPOn ? this.bankSelected : 0, addr, value);
+				return;
+			}
+
 			if(addr < 0x0800 && addr >= 0x0400) {
 				const bank= this.store80On ? this.videoPage : this.writeBank;
 				this._write(bank, addr, value);
@@ -346,13 +378,13 @@ export default class Bus {
 				this.readBank= 0;
 				break;
 			case SWITCHES.RAMDRON:
-				this.readBank= 1;
+				this.readBank= this.bankSelected;
 				break;
 			case SWITCHES.RAMWRTOFF:
 				this.writeBank= 0;
 				break;
 			case SWITCHES.RAMWRTON:
-				this.writeBank= 1;
+				this.writeBank= this.bankSelected;
 				break;
 
 			case SWITCHES.PAGE2ON:
@@ -385,6 +417,13 @@ export default class Bus {
 				this.cxMainRomOn= true;
 				break;
 
+			case SWITCHES.ALZTPOFF:
+				this.altZPOn= false;
+				break;
+			case SWITCHES.ALTZPON:
+				this.altZPOn= true;
+				break;
+
 			case SWITCHES.ALTCHARSETOFF:
 				this.altCharsetOn= false;
 				break;
@@ -392,14 +431,23 @@ export default class Bus {
 				this.altCharsetOn= true;
 				break;
 
+			case SWITCHES.BANKSEL:
+				this.bankSelected= value+1;
+				break;
+
 		}
-		// console.log("-- col80On",this.col80On, "-- store80On", this.store80On, "-- videoPage", this.videoPage);
 	}
 
 	writeHexa(bank, addr, hexString) {
 		const values= hexString.match(/[0-9a-fA-F]+/g);
 		for(let idx= 0; idx<values.length; idx++)
 			this._write(bank, addr++, parseInt(values[idx],16));
+		return addr;
+	}
+
+	writeBin(bank, addr, values) {
+		for(let idx= 0; idx<values.length; idx++)
+			this._write(bank, addr++, values[idx]);
 		return addr;
 	}
 

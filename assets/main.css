@@ -21,11 +21,30 @@ BODY {
 	display: grid;
 	grid-template: " btns    btns    btns" 30px
 					"disasm registers mem " 150px
-					"disasm   stack   mem "/auto 80px auto;
+					"disasm   stack   mem " 110px
+					"disasm   bps     mem "
+					"log      log     log " 1fr
+					/auto 80px auto;
 	grid-gap: 10px;
 	border: 1px solid white;
 	overflow: hidden;
 
+}
+.log {
+    grid-area: log;
+    background: black;
+    padding: 5px;
+    overflow-y: scroll;
+	font-family: monospace;
+    white-space: pre;
+    font-size: 16px;
+}
+.log-disk {
+	color: #e54e4e;
+    text-align: end;
+}
+.log-cpu {
+	color: rgb(35, 99, 173);
 }
 #screen {
 	width: 100%;;
@@ -41,6 +60,28 @@ BODY {
 #disasm .line {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
+}
+#disasm .instruction {
+	display: grid;
+	grid-template: "bank addr disasm" auto/auto auto 1fr;
+}
+#disasm .bank:before {
+	content: attr(data-bank);
+}
+#disasm .addr:before {
+	content: attr(data-addr);
+}
+#disasm .bank {
+	cursor: pointer;
+	grid-area: bank;
+}
+#disasm .addr {
+	cursor: pointer;
+	grid-area: addr;
+}
+#disasm .disasm {
+	grid-area: disasm;
+	padding-left: 10px;
 }
 #disasm .comment:before {
 	content: ";";
@@ -94,8 +135,30 @@ BODY {
 	grid-gap: 3px;
 	grid-auto-rows: min-content;
 }
+#mem .addr {
+	display: grid;
+    grid-auto-flow: column;
+    justify-content: left;
+    grid-gap: 6px;
+	cursor: pointer;
+}
+#mem .value:hover {
+	outline: 1px solid white;
+}
 #stack {
 	grid-area: stack;
+	align-self: center;
+	justify-self: center;
+}
+#bps {
+	grid-area: bps;
+	cursor: pointer;
+}
+#bps>div {
+    display: grid;
+    grid-auto-flow: column;
+	grid-template-columns: auto 1fr;
+	grid-gap: 5px;
 }
 .selected {
 	color: white;
