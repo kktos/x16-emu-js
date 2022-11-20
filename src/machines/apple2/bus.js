@@ -40,8 +40,10 @@ $C057 R/W HIRESON Select high resolution graphics
 $C010 R7 AKD 1=key pressed 0=keys free (clears strobe)
 $C011 R7 BSRBANK2 1=bank2 available 0=bank1 available
 $C012 R7 BSRREADRAM 1=BSR active for read 0=$D000-$FFFF active
+
 $C013 R7 RAMRD 0=main $0200-$BFFF active reads 1=aux active
 $C014 R7 RAMWRT 0=main $0200-$BFFF active writes 1=aux writes
+
 $C015 R7 INTCXROM 1=main $C100-$CFFF ROM active 0=slot active
 $C016 R7 ALTZP 1=aux $0000-$1FF+auxBSR 0=main available
 $C017 R7 SLOTC3ROM 1=slot $C3 ROM active 0=main $C3 ROM active
@@ -166,22 +168,80 @@ const SWITCHES = {
 	// R7 ALTZP 1=aux $0000-$1FF+auxBSR 0=main available
 	ALTZP: 0xC016,
 
+	// R7 RDLCBNK2 1=bank2 available 0=bank1 available
+	RDLCBNK2: 0xC011,
+	// R7 BSRREADRAM 1=LC active for read 0=ROM active
+	RDLCRAM: 0xC012,
+
+	// LC BANK2
+
+	// R  LCRAMIN2 Read RAM bank 2; no write
+	LCRAMIN2: 0xC080,
+	// RR ROMIN2 Read ROM; write RAM bank 2
+	ROMIN2: 0xC081,
+	// R  LCROMIN2 Read ROM; no write
+	LCROMIN2: 0xC082,
+	// RR LCBANK2 Read/write RAM bank 2
+	LCBANK2: 0xC083,
+	// echoes of C080-C083
+	LC_C084: 0xC084,
+	LC_C085: 0xC085,
+	LC_C086: 0xC086,
+	LC_C087: 0xC087,
+
+	// LC BANK1
+
+	// R LC RAM bank1, Read and WR-protect RAM
+	LCRAMIN1: 0xC088,
+	// RR LC RAM bank1, Read ROM instead of RAM,
+	// ;two or more successive reads WR-enables RAM
+	ROMIN1: 0xC089,
+	// R LC RAM bank1, Read ROM instead of RAM,
+	// ;WR-protect RAM
+	LCROMIN1: 0xC08A,
+	// RR LCBANK1 ;LC RAM bank1, Read RAM
+	// two or more successive reads WR-enables RAM
+	LCBANK1: 0xC08B,
+	// echoes of C088-C08B
+	LC_C08C: 0xC08C,
+	LC_C08D: 0xC08D,
+	LC_C08E: 0xC08E,
+	LC_C08F: 0xC08F,
+
 	BANKSEL: 0xC073,
 
+	PADDL0: 0xC064,
+	PADDL1: 0xC065,
+	PADDL2: 0xC066,
+	PADDL3: 0xC067,
+	PTRIG: 0xC070,
+
 	SLOT7F1: 0xC0F1,
+
+	SLOT7FF: 0xC0FF,
 
 };
 
 export default class Bus {
 	constructor(controller, memory) {
 		this.controller= controller;
-		this.ram= new Uint8Array(memory);
+		// this.ram= new Uint8Array(memory);
+		this.memory= {
+			main: new Uint8Array(memory),
+			lgcard: new Uint8Array(0xFFFF-0xD000)
+		};
+
+		this.keys= new KeyMap();
+		this.bankSize= 64 * 1024;
+
+		this.reset();
+	}
+
+	reset() {
 		this.keyWasRead= false;
 		this.lastKeypressed= null;
-		this.keys= new KeyMap();
 		this.readBank= 0;
 		this.writeBank= 0;
-		this.bankSize= 64 * 1024;
 		this.bankSelected= 1;
 		this.videoPage= 0;
 		this.col80On= false;
@@ -193,18 +253,27 @@ export default class Bus {
 		this.HiResOn= false;
 		this.MixedOn= false;
 		this.lastBankUsed= 0;
+
+		this.lcBank= 0;
+		this.lcSelected= false;
+		this.lcWriteEnabled= false;
+		this.lcBank2wrCount= 0;
+
+		this.paddles= [0,0,0,0];
+
+		this.isDiskOpDone= false;
 	}
 
-	_read(bank, addr) {
+	_read(bank, addr, type="main") {
 		this.lastBankUsed= bank;
-		return this.ram[(bank*this.bankSize) + (addr & 0xFFFF)];
+		return this.memory[type][(bank*this.bankSize) + (addr & 0xFFFF)];
 	}
 
-	_write(bank, addr, value) {
-		this.ram[(bank*this.bankSize) + (addr & 0xFFFF)]= value & 0xFF;
+	_write(bank, addr, value, type="main") {
+		this.memory[type][(bank*this.bankSize) + (addr & 0xFFFF)]= value & 0xFF;
 	}
 
-	read(addr) {
+	read(addr, isDebugActive) {
 		addr= addr & 0xFFFF;
 
 		// $0000-$01FF
@@ -227,14 +296,20 @@ export default class Bus {
 		// Language Card
 		// $D000-$FFFF
 		if(addr>0xCFFF) {
-			// should be driven by this.altZPOn
-			return this._read(0, addr);
+			if(!this.lcSelected)
+				// should be driven by this.altZPOn
+				return this._read(0, addr-0xD000, "lgcard");
+
+			return this._read(this.lcBank, addr);
 		}
 
 		// $C100-$cFFF
 		if(addr>0xC0FF) {
 			return this._read(this.cxMainRomOn ? 1 : 0, addr);
 		}
+
+		if(isDebugActive)
+			return 0;
 
 		let value= 0;
 		switch(addr) {
@@ -280,6 +355,10 @@ export default class Bus {
 				value= this.altCharsetOn ? 0x80 : 0;
 				break;
 
+			//
+			// GRAPHIC MODES
+			//
+
 			case SWITCHES.TEXT:
 				value= this.graphicOn ? 0 : 0x80;
 				break;
@@ -320,10 +399,148 @@ export default class Bus {
 				this.controller.postMessage({cmd:"video", data:{mode: "high"}});
 				break;
 
+			//
+			// LANGUAGE CARD
+			//
+
+			// STATUSES
+			case SWITCHES.RDLCBNK2:
+				value= this.lcBank ? 0x80 : 0;
+				break;
+
+			case SWITCHES.RDLCRAM:
+				value= this.lcSelected ? 0x80 : 0;
+				break;
+
+			// BANK 1
+			case SWITCHES.LCRAMIN1:
+			case SWITCHES.LC_C08C:
+				// select LCBank1
+				// read ram no write
+				this.lcWriteEnabled= false;
+				this.lcBank= 0;
+				this.lcSelected= true;
+				value= 1;
+				break;
+
+			case SWITCHES.ROMIN1:
+			case SWITCHES.LC_C08D:
+				// select LCBank1
+				// read ROM write ram
+				this.lcWriteEnabled= !this.lcSelected && this.lcBank == 0;
+				this.lcBank= 0;
+				this.lcSelected= false;
+				value= 1;
+				break;
+
+			case SWITCHES.LCROMIN1:
+			case SWITCHES.LC_C08E:
+				// select LCBank1
+				// read ROM no write
+				this.lcBank= 0;
+				this.lcSelected= false;
+				this.lcWriteEnabled= false;
+				value= 1;
+				break;
+
+			case SWITCHES.LCBANK1:
+			case SWITCHES.LC_C08F:
+				// select LCBank1
+				// read ram write ram
+				this.lcWriteEnabled= this.lcSelected && this.lcBank == 0;
+				this.lcBank= 0;
+				this.lcSelected= true;
+				value= 1;
+				break;
+
+			//
+			// BANK 2
+			//
+			case SWITCHES.LCRAMIN2:
+			case SWITCHES.LC_C084:
+				// select LCBank2
+				// read ram no write
+				this.lcWriteEnabled= false;
+				this.lcBank= 1;
+				this.lcSelected= true;
+				this.lcBank2wrCount= 0;
+				value= 1;
+				break;
+
+			case SWITCHES.ROMIN2:
+			case SWITCHES.LC_C085:
+				// select LCBank2
+				// read ROM write ram
+				this.lcBank= 1;
+				this.lcSelected= false;
+				this.lcBank2wrCount++;
+				this.lcWriteEnabled= this.lcBank2wrCount > 1;
+				value= 1;
+				break;
+
+			case SWITCHES.LCROMIN2:
+			case SWITCHES.LC_C086:
+				// select LCBank2
+				// read ROM no write
+				this.lcBank= 1;
+				this.lcSelected= false;
+				this.lcWriteEnabled= false;
+				this.lcBank2wrCount= 0;
+				value= 1;
+				break;
+
+			case SWITCHES.LCBANK2:
+			case SWITCHES.LC_C087:
+				// select LCBank2
+				// read ram write ram
+				this.lcBank= 1;
+				this.lcSelected= true;
+				this.lcBank2wrCount++;
+				this.lcWriteEnabled= this.lcBank2wrCount > 1;
+				value= 1;
+				break;
+
+			//
+			// SLOT 7
+			//
+
 			case SWITCHES.SLOT7F1:
 				// check $C74C routine
 				value= 1;
 				break;
+
+			case SWITCHES.SLOT7FF:
+				value= this.isDiskOpDone ? 0x80 : 0;
+				if(this.isDiskOpDone)
+					this.isDiskOpDone= false;
+				break;
+
+			//
+			// JOYSTICK
+			//
+
+			case SWITCHES.PADDL0:
+				this.paddles[0]++;
+				value= this.paddles[0] >= 0x7F ? 0x00 : 0x80;
+				break;
+			case SWITCHES.PADDL1:
+				this.paddles[1]++;
+				value= this.paddles[1] >= 0x7F ? 0x00 : 0x80;
+				break;
+			case SWITCHES.PADDL2:
+				this.paddles[2]++;
+				value= this.paddles[2] >= 0x7F ? 0x00 : 0x80;
+				break;
+			case SWITCHES.PADDL3:
+				this.paddles[3]++;
+				value= this.paddles[3] >= 0x7F ? 0x00 : 0x80;
+				break;
+			case SWITCHES.PTRIG:
+				this.paddles= [0,0,0,0];
+				value= 0;
+				break;
+
+
 		}
 		// console.log(
 		// 	"READ",
@@ -335,6 +552,12 @@ export default class Bus {
 
 	write(addr, value) {
 		addr&= 0xFFFF;
+
+		if(addr >= 0xD000) {
+			if(this.lcSelected && this.lcWriteEnabled)
+				this._write(this.lcBank, addr, value);
+			return;
+		}
 
 		if(addr >= 0xC100)
 			return;
@@ -354,19 +577,19 @@ export default class Bus {
 
 			this._write(this.writeBank, addr, value);
 
-			if(addr < 0x4000 && addr >= 0x2000) {
-				let partToUpdate;
-				if(addr < 0x2800)
-					partToUpdate= 0;
-				else if(addr < 0x3000)
-					partToUpdate= 1;
-				else if(addr < 0x3800)
-					partToUpdate= 2;
-				else if(addr < 0x4000)
-					partToUpdate= 3;
+			// if(addr < 0x4000 && addr >= 0x2000) {
+			// 	let partToUpdate;
+			// 	if(addr < 0x2800)
+			// 		partToUpdate= 0;
+			// 	else if(addr < 0x3000)
+			// 		partToUpdate= 1;
+			// 	else if(addr < 0x3800)
+			// 		partToUpdate= 2;
+			// 	else if(addr < 0x4000)
+			// 		partToUpdate= 3;
 
-				this.controller.postMessage({cmd:"video", data:{update: partToUpdate}});
-			}
+			// 	this.controller.postMessage({cmd:"video", data:{update: partToUpdate}});
+			// }
 
 			return;
 		}
@@ -435,19 +658,25 @@ export default class Bus {
 				this.bankSelected= value+1;
 				break;
 
+			case SWITCHES.SLOT7FF:
+				console.log("WRITE SLOT7FF", true);
+				this.isDiskOpDone= true;
+				break;
 		}
 	}
 
-	writeHexa(bank, addr, hexString) {
+	writeHexa(bank, addr, hexString, type) {
+		// console.log("writeHexa", type ?? "main", bank.toString(16).padStart(2,"0"), addr.toString(16).padStart(4,"0"), hexString.slice(0,32).trim());
 		const values= hexString.match(/[0-9a-fA-F]+/g);
 		for(let idx= 0; idx<values.length; idx++)
-			this._write(bank, addr++, parseInt(values[idx],16));
+			this._write(bank, addr++, parseInt(values[idx],16), type);
 		return addr;
 	}
 
 	writeBin(bank, addr, values) {
 		for(let idx= 0; idx<values.length; idx++)
-			this._write(bank, addr++, values[idx]);
+			// this._write(bank, addr++, values[idx]);
+			this.write(addr++, values[idx]);
 		return addr;
 	}
 

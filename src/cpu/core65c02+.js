@@ -115,6 +115,139 @@ function memZPY()
 //***********************
 //*EMULATED INSTRUCTIONS*
 //***********************
+function readString(start) {
+	let str= "";
+	let c;
+	let end= start;
+	do {
+		c= core.bus.read(end++);
+		if(c)
+			str+= String.fromCharCode(c);
+	} while(c);
+	return {str, len: end-start};
+}
+
+function subOUT() {
+	let parms= [];
+	let {str: fmt, len}= readString(core.PC);
+	core.PC+= len;
+	const parmCount= core.bus.read(core.PC++);
+	for(let idx=0; idx<parmCount; idx++) {
+		const val= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+		parms[idx]= val;
+	}
+
+	let outStr= "";
+	let curPos= 0;
+	let curParm= 0;
+	let match;
+	const regex1 = RegExp('%.', 'g');
+	let W= 0;
+	let H= 0;
+	while ((match = regex1.exec(fmt)) !== null) {
+		outStr+= fmt.slice(curPos, match.index);
+		curPos= regex1.lastIndex;
+		switch(match[0]) {
+			case "%y":
+					outStr+= hexbyte(core.Y);
+					break;
+			case "%a":
+				outStr+= hexbyte(core.A);
+				break;
+			case "%x":
+				outStr+= hexbyte(core.X);
+				break;
+			case "%w": {
+				const v= core.bus.read(parms[curParm]) + (0x100*(core.bus.read(parms[curParm]+1)));
+				outStr+= hexword(v);
+				curParm++;
+				break;
+			}
+			case "%b":
+				outStr+= hexbyte(core.bus.read(parms[curParm]));
+				curParm++;
+				break;
+			case "%W":
+				W= core.bus.read(parms[curParm]);
+				outStr+= hexbyte(W);
+				curParm++;
+				break;
+			case "%H":
+				H= core.bus.read(parms[curParm]);
+				outStr+= hexbyte(H);
+				curParm++;
+				break;
+			case "%D": {
+				const len= W*H;
+				const addr= core.bus.read(parms[curParm]) + (0x100*(core.bus.read(parms[curParm]+1)));
+				outStr+= "\n["+hexword(addr)+"."+hexword(addr+len-1)+"]";
+				outStr+= "\n"+hexword(addr)+": ";
+				let curW= 0;
+				for(let offset= 0; offset<len; offset++) {
+					if(curW == W) {
+						curW= 0;
+						outStr+= "\n"+hexword(addr + offset)+": ";
+					}
+					outStr+= hexbyte(core.bus.read(addr + offset))+" ";
+					curW++;
+				}
+				curParm++;
+			}
+				break;
+		}
+	}
+
+	console.log(outStr, {fmt, parms});
+
+	// self.postMessage({cmd:"log", data: {
+	// 	fmt,
+	// 	parms
+	// }});
+}
+
+function subDISK_READ_FILE() {
+	const addr= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+	const {str: filename}= readString(addr);
+	self.postMessage({cmd:"disk", data: {
+		cmd: "read_file",
+		filename,
+		diskID: 0
+	}});
+}
+
+function subDISK_READ() {
+	const sector= core.bus.read(core.PC++);
+	const track= core.bus.read(core.PC++);
+	const addr= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+	const length= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+
+	self.postMessage({cmd:"disk", data: {
+		cmd: "read",
+		track,
+		sector,
+		addr,
+		length,
+		diskID: 0
+	}});
+
+}
+
+function hexbyte(value) {
+	return (((value >>> 4) & 0xf).toString(16) + (value & 0xf).toString(16)).toUpperCase();
+}
+function hexword(value) {
+	return hexbyte(value >>> 8) + hexbyte(value & 0xff);
+}
+
+function subMVPw() {
+	const src= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+	const dst= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+	const len= core.bus.read(core.PC++) + (0x100*(core.bus.read(core.PC++)));
+	for(let idx= 0; idx<len; idx++) {
+		core.bus.write((dst+idx)&0xFFFF, core.bus.read((src+idx)&0xFFFF));
+	}
+	// console.log("MVPw", hexword(src), hexword(dst), hexword(len), " LC:",core.bus.lcSelected, " WE:",core.bus.lcWriteEnabled);
+}
 
 function subADC(oper)
 {
@@ -525,7 +658,25 @@ function opRTI()													//0x40
 	core.cycle_count-=5;//should be +5 overall
 }
 function opEOR_IX(){subEOR(memIX());core.cycle_count+=6;}				//0x41
-//function opNOP_IMMED()											//0x42
+function opWDM_EXTENDED() {											//0x42
+	core.cycle_count+= 2;
+	switch(memIMMED()) {
+		case 0x01: // DISK_READ
+			subDISK_READ();
+			break;
+		case 0x11: // DISK_READ_FILE
+			subDISK_READ_FILE();
+			break;
+		case 0x44: // MVP.w src.w dst.w len.w
+			subMVPw();
+			break;
+		case 0xFF: // OUT string
+			subOUT();
+			break;
+		default:
+			opBRK();
+	}
+}
 //function opNOP()													//0x43
 function opNOP_ZP(){core.PC++;core.cycle_count+=3;}							//0x44
 function opEOR_ZP(){subEOR(memZP());core.cycle_count+=3;}				//0x45
@@ -1072,7 +1223,7 @@ export let opcodes= [
 	opBBR3,				//0x3F
 	opRTI,				//0x40
 	opEOR_IX,			//0x41
-	opNOP_IMMED,		//0x42
+	opWDM_EXTENDED,		//0x42 here: extended instruction 65816: WDM
 	opNOP,				//0x43
 	opNOP_ZP,			//0x44
 	opEOR_ZP,			//0x45

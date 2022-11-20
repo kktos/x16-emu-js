@@ -2,19 +2,25 @@
 export default async function processHooks(vm, cpu) {
 
 	let wannaKeepItRunning= true;
+	let data= null;
 
 	switch(cpu.PC) {
 
 		case 0xC600: {
-			if(vm.diskImages[0])
-				readSector(vm, vm.diskImages[0], 0, 0, 0x800, true);
 
-			await vm.waitMessage("register", {PC: 0x801});
+			// if(vm.diskImages[0])
+			// 	readSector(vm, vm.diskImages[0], 0, 0, 0x800, true);
+
+			vm.disk.readSector(0, 0, 0, 0x800, true);
+
+			// await vm.waitMessage("register", {PC: 0x801});
+
 			// slot 6 * 16
 			await vm.memWriteBin(0, 0x2B, [0x60]);
 			// PT2BTBUFHI 8+1=9 as inc after $800 was just loaded
 			await vm.memWriteBin(0, 0x27, [0x09]);
 
+			data= {PC: 0x801};
 			break;
 		}
 
@@ -25,10 +31,12 @@ export default async function processHooks(vm, cpu) {
 			const BOOTRK= bytes[0x41-0x26]; //0x41
 			const PT2BTBUF= bytes[0x26-0x26] + bytes[0x27-0x26]*256; /*0x26 0x27*/
 
-			if(vm.diskImages[0])
-				readSector(vm, vm.diskImages[0], BOOTRK, BOOTSEC, PT2BTBUF, true);
+			vm.disk.readSector(0, BOOTRK, BOOTSEC, PT2BTBUF, true);
+			// if(vm.diskImages[0])
+			// 	readSector(vm, vm.diskImages[0], BOOTRK, BOOTSEC, PT2BTBUF, true);
 
-			await vm.waitMessage("register", {PC: 0x801});
+			// await vm.waitMessage("register", {PC: 0x801});
+			data= {PC: 0x801};
 
 			break;
 		}
@@ -47,12 +55,15 @@ export default async function processHooks(vm, cpu) {
 				bytes: bytes.reduce((acc, curr)=> acc+curr.toString(16)+" ", ""),
 			});
 
-			if(buffer && vm.diskImages[0])
-				readSector(vm, vm.diskImages[0], track, sector, buffer, false);
+			if(buffer)
+				vm.disk.readSector(0, track, sector, buffer, false);
+			// if(buffer && vm.diskImages[0])
+			// 	readSector(vm, vm.diskImages[0], track, sector, buffer, false);
 
 			// need to CLC
 			// need to return where we came
-			await vm.waitMessage("register", {c: 0, meta:{RTS:1}});
+			// await vm.waitMessage("register", {c: 0, meta:{RTS:1}});
+			data= {c: 0, meta:{RTS:1}};
 
 			break;
 		}
@@ -62,8 +73,9 @@ export default async function processHooks(vm, cpu) {
 			break;
 	}
 
-	return wannaKeepItRunning;
+	return { wannaKeepItRunning, data };
 }
+/*
 
 // 00 	   01    02    03    04    05    06    07    08    09    0a    0b    0c    0d    0e     0f
 // 00 	   0d    0b    09    07    05    03    01    0e    0c    0a    08    06    04    02     0f
@@ -78,3 +90,5 @@ async function readSector(vm, disk, track, sector, addr, isInterleaved) {
 	const ts= `T${track.toString(16)}:S${sector.toString(16)}`;
 	console.clog("disk", `DISK READ ${ts}[$${offset.toString(16)}] to $${addr.toString(16)}`);
 }
+
+*/

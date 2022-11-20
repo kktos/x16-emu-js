@@ -1,7 +1,5 @@
 import { assemble } from "../6502assembler/6502assembler.js";
 import * as utils from "../utils.js";
-import setupConsole from "./console.js";
-import Disassembler from "./disassembler/disassembler.js";
 import MemViewer from "./mem.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
@@ -13,8 +11,8 @@ import MemViewer from "./mem.js";
 //   Repton 2 @ 2cbb
 //   MOS @ cfc8
 // also, just starting from the back of ROM and going up...
-const commonInstructions= /(RTS|B..|JMP|JSR|LD[AXY]|ST[AXY]|TA[XY]|T[XY]A|AD[DC]|SUB|SBC|CLC|SEC|CMP|EOR|ORR|AND|INC|DEC).*/;
-const uncommonInstrucions= /.*,\s*([XY]|X\))$/;
+// const commonInstructions= /(RTS|B..|JMP|JSR|LD[AXY]|ST[AXY]|TA[XY]|T[XY]A|AD[DC]|SUB|SBC|CLC|SEC|CMP|EOR|ORR|AND|INC|DEC).*/;
+// const uncommonInstrucions= /.*,\s*([XY]|X\))$/;
 const DISASM_LINES_COUNT= 40;
 const id= "65x02 Machine Emulator";
 export default class Debugger {
@@ -22,7 +20,7 @@ export default class Debugger {
 	constructor(vm, memory) {
 		this.vm= vm;
 		this.memory= new Uint8Array(memory);
-		this.disassembler= new Disassembler(memory);
+		// this.disassembler= new Disassembler(vm, memory);
 
 		this.stepCount= Infinity;
 		this.stopOnOpcode= 0;
@@ -37,6 +35,10 @@ export default class Debugger {
 			this.update();
 		};
 
+		window.DBG= this;
+
+		this.isPanelMoving= false;
+		this.isPanelOffset= null;
 		// this.setupUI();
 	}
 
@@ -53,7 +55,7 @@ export default class Debugger {
 		this.UIdisasm= this.uiroot.querySelector("#disasm");
 		this.UIbps= this.uiroot.querySelector("#bps");
 
-		setupConsole(this.uiroot.querySelector(".log"));
+		// setupConsole(this.uiroot.querySelector(".log"));
 
 		this.editValueDlg= this.uiroot.querySelector("#editValueDlg");
 
@@ -91,6 +93,28 @@ export default class Debugger {
 				btn.addEventListener("change", (e) => this.onChange(e));
 			});
 
+		const btns= this.uiroot.querySelector("#btns");
+		btns.addEventListener('mousedown', (e) => {
+			this.isPanelMoving= true;
+			this.isPanelOffset= [
+				this.uiroot.offsetLeft - e.clientX,
+				this.uiroot.offsetTop - e.clientY
+			];
+		}, true);
+
+		document.addEventListener('mouseup', () => { this.isPanelMoving= false;	}, true);
+		document.addEventListener('mousemove', (event) => {
+			event.preventDefault();
+			if (this.isPanelMoving) {
+				const mousePosition= {
+					x : event.clientX,
+					y : event.clientY
+				};
+				this.uiroot.style.left= (mousePosition.x + this.isPanelOffset[0]) + 'px';
+				this.uiroot.style.top= (mousePosition.y + this.isPanelOffset[1]) + 'px';
+			}
+		}, true);
+
 		this.updateBtns(false);
 		this.update();
 	}
@@ -107,18 +131,18 @@ export default class Debugger {
 		this.editValueDlg.showModal();
 	}
 
-	async handleDirectoryEntry( dirHandle, out ) {
-		for await (const entry of dirHandle.values()) {
-		  if (entry.kind === "file"){
-			const file = await entry.getFile();
-			out[ file.name ] = file;
-		  }
-		  if (entry.kind === "directory") {
-			const newOut = out[ entry.name ] = {};
-			await this.handleDirectoryEntry( entry, newOut );
-		  }
-		}
-	}
+	// async handleDirectoryEntry( dirHandle, out ) {
+	// 	for await (const entry of dirHandle.values()) {
+	// 	  if (entry.kind === "file"){
+	// 		const file = await entry.getFile();
+	// 		out[ file.name ] = file;
+	// 	  }
+	// 	  if (entry.kind === "directory") {
+	// 		const newOut = out[ entry.name ] = {};
+	// 		await this.handleDirectoryEntry( entry, newOut );
+	// 	  }
+	// 	}
+	// }
 
 	async onClickBtn(e) {
 
@@ -163,7 +187,7 @@ export default class Debugger {
 			}
 
 			case "reset":
-				this.vm.setup();
+				this.vm.reset();
 				break;
 
 			case "play":
@@ -180,14 +204,27 @@ export default class Debugger {
 				break;
 
 			case "step_over":
-				this.vm.stepOver();
-				this.update();
+				this.vm.stepOver().then(()=>this.update());
 				break;
 
-			case "step_into":
-				this.vm.step();
-				this.update();
-				break;
+				case "step_into": {
+					performance.clearMarks();
+					performance.clearMeasures();
+					performance.mark("step");
+					this.vm.step().then(()=> {
+						// performance.measure("STEP", "step");
+
+						this.update();
+
+						performance.measure("TOTAL", "step");
+
+						performance.getEntriesByType("measure")
+							.forEach(entry => console.log(`${entry.name}:${entry.duration}`));
+
+
+					});
+					break;
+				}
 
 			case "clear-log":
 				console.clear();
@@ -268,6 +305,12 @@ export default class Debugger {
 		}
 	}
 
+	async bload(bank, addr) {
+		const [fileHandle] = await showOpenFilePicker();
+		const file = await fileHandle.getFile();
+		this.vm.memWriteBin(bank, addr, new Uint8Array(await file.arrayBuffer()));
+	}
+
 	toggleBreakpoint(addr) {
 		const idx= this.breakpoints.indexOf(addr);
 		if(idx>=0) {
@@ -286,7 +329,7 @@ export default class Debugger {
 		this.update();
 	}
 
-	prevInstruction(cpuState, address) {
+	async prevInstruction(cpuState, address) {
 		address &= 0xffff;
 		let bestAddr= address - 1;
 		let bestScore= 0;
@@ -294,7 +337,7 @@ export default class Debugger {
 			let score= 0;
 			let addr= startingPoint & 0xffff;
 			while (addr < address) {
-				let result= this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
+				let result= await this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
 				if (result[0] === cpuState.PC) score += 10; // huge boost if this instruction was executed
 				if (result[0].match(commonInstructions) && !result[0].match(uncommonInstrucions)) {
 					score++;
@@ -312,8 +355,8 @@ export default class Debugger {
 		return bestAddr;
 	}
 
-	updateDisasm(cpuState) {
-		const buildLine= (lineID, addr, disasm, comment, selected= false) => {
+	async updateDisasm(cpuState) {
+		const buildLine= ({lineID, addr, disasm, comment, selected}) => {
 			const bank= utils.hexbyte(this.mem.dumpMemBank);
 			addr= utils.hexword(addr);
 			return `
@@ -331,24 +374,15 @@ export default class Debugger {
 				"</div>";
 		};
 
-		let disasmStr= "";
-		let addr= cpuState.PC;
-		let lineID= 0;
-		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			const rez= this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
-			disasmStr+= buildLine(lineID, addr, rez[0], rez[2], addr==cpuState.PC);
-			addr= rez[1];
-			lineID++;
-		}
-		addr= cpuState.PC;
-		for(let line= 0; line<DISASM_LINES_COUNT/2; line++) {
-			addr= this.prevInstruction(cpuState, addr);
-			const rez= this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
-			disasmStr= buildLine(lineID, addr, rez[0], rez[2]) + disasmStr;
-			lineID++;
-		}
+		this.vm.waitMessage("disasm", {bank: this.mem.dumpMemBank, addr: cpuState.PC, lineCount: DISASM_LINES_COUNT})
+			.then(lines => {
+				let disasmStr= "";
+				for(let lineIdx= 0; lineIdx<lines.length; lineIdx++) {
+					disasmStr+= buildLine(lines[lineIdx]);
+				}
+				this.UIdisasm.innerHTML= disasmStr;
+			});
 
-		this.UIdisasm.innerHTML= disasmStr;
 	}
 
 	updateStack(cpuState) {
@@ -389,15 +423,16 @@ export default class Debugger {
 	}
 
 	async update() {
-		const cpuState= await this.vm.getCPUstate();
-		// console.log("debugger update",cpuState);
-		this.updateStack(cpuState);
-		this.updateBreakpoints();
-		this.updateRegisters(cpuState);
-		this.mem.update();
-		this.updateDisasm(cpuState);
 
-		console.flush();
+		this.vm.getCPUstate().then(cpuState => {
+			this.updateStack(cpuState);
+			this.updateRegisters(cpuState);
+			this.updateDisasm(cpuState);
+		});
+		this.updateBreakpoints();
+		this.mem.update();
+
+		console.flush ? console.flush() : console.clear();
 	}
 
 }

@@ -1,4 +1,5 @@
-import { core, opcodes } from "./core65c02";
+import { core, opcodes } from "./core65c02+";
+import { disasm } from "./disasm";
 
 /*
 
@@ -27,7 +28,7 @@ import { core, opcodes } from "./core65c02";
 const registers= ["A", "X", "Y", "PC", "SP", "c", "z", "i", "d", "b", "v", "n"];
 
 const CYCLES_COUNT_FOR_1MHZ = 5000;
-let speedMHz = 1; //4.1MHz = 4.35; //2.5MHz(IIgs) = 2.65; //2MHz = 2.08;
+let speedMHz = 3; //4.1MHz = 4.35; //2.8MHz(IIgs) = 3; //2MHz = 2.08;
 let cyclesCountForSpeed = speedMHz * CYCLES_COUNT_FOR_1MHZ;
 
 let loaded= 0;
@@ -79,6 +80,14 @@ function* cycle10_6()
 			// 	op: hexbyte(op)
 			// }});
 
+			// if(hooks.hasOwnProperty(core.PC)) {
+			// 	self.postMessage({cmd:"log", data: {
+			// 		label:"[HOOK]",
+			// 		PC: hexword(core.PC),
+			// 		hook: hooks[core.PC],
+			// 	}});
+			// }
+
 			if(hooks.hasOwnProperty(core.PC) && hooks[core.PC][core.bus.lastBankUsed]) {
 				core.running= 0;
 				const hookAddr= core.PC;
@@ -92,6 +101,8 @@ function* cycle10_6()
 					SP: core.SP,
 				}});
 				yield;
+
+				// console.log("RETURN FROM HOOK",  hexword(core.PC));
 
 				self.postMessage({cmd:"log", data: {
 					label:"[CPU] RESUME FROM HOOK",
@@ -117,7 +128,7 @@ function* cycle10_6()
 
 				tempBP= -1;
 				core.running= 0;
-				self.postMessage({cmd:"stopped", PC: bpAddr});
+				self.postMessage({cmd:"stopped", PC: bpAddr, op:"BP"});
 				yield;
 
 				// read again as the PC may have been changed
@@ -147,7 +158,7 @@ function* cycle10_6()
 				if(wannaStopOnRTS && stopAtjsrLevel == jsrLevel) {
 					wannaStopOnRTS= false;
 					core.running= 0;
-					self.postMessage({cmd:"stopped", PC: core.PC});
+					self.postMessage({cmd:"stopped", PC: core.PC, op:"RTS"});
 					yield;
 					console.log("CPU LOOP 3");
 
@@ -228,9 +239,10 @@ function recordCycle()
 
 async function OnMessage({ports, data:{cmd, id, data}})
 {
-	// console.log("worker onMessage", cmd, id, core.running?"RUNNING":"STOPPED");
-
 	const recipient= ports?.[0];
+
+	// console.log("worker onMessage", cmd, id, recipient);
+
 
 	debugflag= '';
 	switch(cmd) {
@@ -284,11 +296,16 @@ async function OnMessage({ports, data:{cmd, id, data}})
 		}
 
 		case "memWriteHexa":
-			core.bus.writeHexa(data.bank, data.addr, data.hexString);
+			core.bus.writeHexa(data.bank, data.addr, data.hexString, data.type);
 			break;
 
 		case "memWriteBin":
 			core.bus.writeBin(data.bank, data.addr, data.values);
+			recipient?.postMessage({cmd, id });
+			break;
+
+		case "memWrite":
+			core.bus.write(data.addr, data.value);
 			recipient?.postMessage({cmd, id });
 			break;
 
@@ -305,7 +322,17 @@ async function OnMessage({ports, data:{cmd, id, data}})
 			for(let idx= 0; idx<count; idx++) {
 				bytes.push(core.bus.read(data.addr + idx));
 			}
-			recipient?.postMessage({cmd: "memReadBytes", id: id, data: bytes });
+			recipient?.postMessage({cmd, id, data: bytes });
+			break;
+		}
+
+		case "dbgReadBytes": {
+			const count= data.count ? data.count : (data.end ? data.end-data.addr+1 : 1);
+			const bytes= [];
+			for(let idx= 0; idx<count; idx++) {
+				bytes.push(core.bus.read(data.addr + idx, true));
+			}
+			recipient?.postMessage({cmd, id, data: bytes });
 			break;
 		}
 
@@ -321,7 +348,7 @@ async function OnMessage({ports, data:{cmd, id, data}})
 
 		case 'stepOver': {
 			if(0x20 == core.bus.read(core.PC)) {
-				const addr= core.bus.read(core.PC+1)+core.bus.read(core.PC+2)*256;
+				// const addr= core.bus.read(core.PC+1)+core.bus.read(core.PC+2)*256;
 				tempBP= core.PC + 3;
 
 				// console.log("stepOver", {
@@ -390,6 +417,11 @@ async function OnMessage({ports, data:{cmd, id, data}})
 			break;
 
 		case 'run':
+			if(data) {
+				setRegisters(data);
+				if(data.meta)
+					execMeta(data.meta);
+			}
 			run();
 			break;
 
@@ -400,6 +432,7 @@ async function OnMessage({ports, data:{cmd, id, data}})
 
 		case 'reset':
 			// debugger;
+			core.bus.reset();
 			core.PC= core.bus.read(0xFFFC)+(core.bus.read(0xFFFD)<<8);
 			core.A= 0xAA;
 			core.FlagD= 0;
@@ -416,6 +449,12 @@ async function OnMessage({ports, data:{cmd, id, data}})
 			core.bus.keys.set(data.key, cmd == "keydown");
 			break;
 
+		case "disasm": {
+			const lines= disasm(data.bank, data.addr, data.lineCount);
+			recipient?.postMessage({cmd: "mhz", id, data: lines});
+			break;
+		}
+
 		// case 'reset cycles':
 		// 	core.cycle_count= 0;
 		// 	break;
@@ -431,7 +470,7 @@ async function OnMessage({ports, data:{cmd, id, data}})
 }
 
 function setRegisters(data) {
-	const regs= registers.filter(reg => data.hasOwnProperty(reg));
+	const regs= registers.filter(reg => data?.hasOwnProperty(reg));
 	regs.forEach(reg => {
 		switch(reg) {
 			case "A":
@@ -469,6 +508,8 @@ function execMeta(meta) {
 
 function run() {
 
+	console.log("run", core.PC);
+
 	self.postMessage({cmd:"log", data: {
 		label:"CPU run",
 		PC: hexword(core.PC),
@@ -503,7 +544,11 @@ function step() {
 		return;
 	}
 
-	const op= core.bus.read(core.PC++);
+	let op= core.bus.read(core.PC++);
+	// if stopped on BRK, just skip it
+	if(op == 0x00)
+		op= core.bus.read(core.PC++);
+
 	if(op == 0x20)
 		jsrLevel++;
 	if(op == 0x60)
@@ -534,8 +579,7 @@ function dumpMem(addr) {
 //*SETUP FUNCTION*
 //****************
 
-function setup({busSrcFile, memory, NMOS, debuggerOnBRK})
-{
+function setup({busSrcFile, memory, NMOS, debuggerOnBRK}) {
 	return new Promise(resolve => {
 		function onLoaded({default: Bus}) {
 			core.bus= new Bus(self, memory);
@@ -547,6 +591,7 @@ function setup({busSrcFile, memory, NMOS, debuggerOnBRK})
 		// this trickery because vitejs is not able to deal with dynamic variable imports
 		eval(`import("/src/machines/${busSrcFile}").then(onLoaded)`);
 	});
+}
 
 /*
 	let record_bytes=0;
@@ -920,7 +965,7 @@ function setup({busSrcFile, memory, NMOS, debuggerOnBRK})
 		});
 	});
 */
-}
+
 
 
 

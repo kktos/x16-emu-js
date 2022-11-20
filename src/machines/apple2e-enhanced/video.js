@@ -67,17 +67,22 @@ export default class Video {
 		this.refreshCount= 0;
 
 		this.mode= this.lastGRMode= MODE.HGR;
+
+		this.avgSpeed= 0;
+		this.speeds= [10,10,10,10,10,10,10,10,10,10,10];
+		this.speedIdx= 0;
 	}
 
 	// 620x548 -> ratio 1.13
 	// 700x619 -> ratio 1.13
+	// 1134x782 -> ratio 4
 	get width() {
-		return 700;
+		return 1134/2;
 		// return 40*15+20; // 620
 	}
 
 	get height() {
-		return 620;
+		return 782/2;
 		// return 24*22+20; // 548
 	}
 
@@ -445,7 +450,7 @@ export default class Video {
 
 	}
 
-	renderHighGraphic_old(ctx) {
+	renderHighGraphic_old(mainCtx) {
 		const incH= hPixW+0;
 		const y= 10;
 		const stepH= 7 * incH;
@@ -501,7 +506,31 @@ export default class Video {
 			pixCurrent= pixAfter;
 		}
 
-		for(line= 0; line<(this.mixed ? 150 : 191); line++) {
+
+		const tempCanvas= document.createElement("canvas");
+		const ctx= tempCanvas.getContext("2d", { alpha: false });
+		ctx.imageSmoothingEnabled = false;
+		ctx.msImageSmoothingEnabled = false;
+
+		tempCanvas.width= 280;
+		tempCanvas.height= 48*4;
+
+		for(let part= 0; part<4; part++) {
+			this.renderHGRScreenPart(ctx, 48*part, 48*(part+1));
+			ctx.translate(0, 48);
+		}
+		// ctx.translate(0, 48*-4);
+
+		mainCtx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, this.width, this.height);
+
+		return;
+
+		// const tempCanvas= document.createElement("canvas");
+		// const ctx= tempCanvas.getContext("2d");
+		// tempCanvas.width= 280;
+		// tempCanvas.height= this.mixed ? 150 : 193;
+
+		for(line= 0; line<(this.mixed ? 150 : 193); line++) {
 			pixBefore= -1;
 			for(column= 0; column<40; column+= 2) {
 				const addr= HGR_LINES[line]+column;
@@ -542,8 +571,12 @@ export default class Video {
 
 			}
 		}
+
+		// mainCtx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 10, 10, this.width-20, this.height-20);
+		mainCtx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+
 		if(this.mixed)
-			this.renderText40Mixed(ctx);
+			this.renderText40Mixed(mainCtx);
 	}
 
 	// renderHighGraphic2(ctx) {
@@ -622,7 +655,7 @@ export default class Video {
 		ctx.fillStyle="black";
 		ctx.fillRect(0,0,canvas.width,canvas.height);
 
-		const s = performance.now();
+		const s= performance.now();
 
 		switch(this.mode) {
 			case MODE.TEXT: {
@@ -634,7 +667,8 @@ export default class Video {
 				break;
 			case MODE.HGR:
 				// this.renderHighGraphic_old(ctx);
-				this.renderHighGraphic(ctx);
+				// this.renderHighGraphic(ctx);
+				this.renderHighGraphic_old(ctx);
 				break;
 		}
 
@@ -642,36 +676,20 @@ export default class Video {
 		ctx.font = '16px monospace';
 
 		if(isVmPaused) {
-			ctx.fillText(
-				`PAUSED ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`,
-				10, canvas.height-10);
+			const txt= `PAUSED ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`;
+			ctx.fillText(txt, canvas.width-ctx.measureText(txt).width-5, 15);
 			return;
 		}
 
-		const e = performance.now();
-		ctx.fillText(
-			`${(e - s).toFixed(2)}ms ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`,
-			10, canvas.height-10);
+		const m= ["TEXT", "GR", "HGR"][this.mode];
 
+		const e= performance.now();
+		this.speedIdx= this.speedIdx+1 % this.speeds.length;
+		this.speeds[this.speedIdx]= e - s;
+		const avg= this.speeds.reduce((acc, cur)=>acc+cur, 0) / this.speeds.length;
 
-		// ctx.fillStyle="#7777FF";
-		// ctx.font = '12px monospace';
-		// y= 400;
-		// x= 10
-		// for(let line= 0; line<6; line++) {
-		// 	const addr= (TEXT_LINES[line]).toString(16).toUpperCase();
-		// 	ctx.fillText(addr.padStart(4, '0')+":", x, y+(16*line));
-		// 	for(let column= 0; column<40; column++) {
-		// 		const char= (this.memory[TEXT_LINES[line]+column]).toString(16);
-		// 		ctx.fillText(char.padStart(2, '0'), x+40+(15*column), y+(16*line));
-		// 	}
-		// }
-
-		// ctx.fillStyle="red";
-		// ctx.font = '16px monospace';
-		// ctx.fillText(`${this.count}`, 10, canvas.height-20);
-		// ctx.fillText(`PC:${this.cpu.pc}`, 10, canvas.height-40);
-		// ctx.fillText(` X:${this.cpu.x}`, 10, canvas.height-60);
+		const txt= `${this.mixed?"mixed":""} ${m} W${canvas.width}H${canvas.height} ${avg.toFixed(2)}ms ${this.refreshCount} ${tick} ${mhz.toFixed(2)}MHz`;
+		ctx.fillText(txt,canvas.width-ctx.measureText(txt).width-5, 15);
 
 	}
 

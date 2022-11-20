@@ -18,7 +18,7 @@ export default class VM {
 		this.canvas= canvas;
 		this.isRunning= true;
 
-		this.diskImages= [];
+		// this.diskImages= [];
 
 		this.gc= {
 			viewport: {
@@ -56,11 +56,14 @@ export default class VM {
 
 		this.sound= new machine.Sound(this.memory, this);
 
+		this.disk= new machine.Disk(this);
+
 		this.canvas.width= this.video.width;
 		this.canvas.height= this.video.height;
 		this.gc.viewport.ctx.imageSmoothingEnabled = false; // magic!
 		this.gc.viewport.ctx.msImageSmoothingEnabled = false; // magic!
 
+		window.VM= this;
 	}
 
 	async setup() {
@@ -82,16 +85,17 @@ export default class VM {
 	}
 
 	setupMemoryMap() {
-		this.machine.memory.map.forEach(({bank, addr, data}) => {
-			this.memWriteHexa(bank, addr, data);
+		this.machine.memory.map.forEach(({bank, addr, data, type}) => {
+			this.memWriteHexa(bank, addr, data, type);
 		});
 	}
 
-	memWriteHexa(bank, addr, hexString) {
+	memWriteHexa(bank, addr, hexString, type) {
 		this.sendMessage("memWriteHexa", {
 			bank,
 			addr,
-			hexString
+			hexString,
+			type
 		});
 	}
 
@@ -104,7 +108,8 @@ export default class VM {
 	}
 
 	setDisk(diskID, imgData) {
-		this.diskImages[diskID]= imgData;
+		this.disk.setImage(diskID, imgData);
+		// this.diskImages[diskID]= imgData;
 		// console.log("setDisk",{diskID, imgData});
 	}
 
@@ -160,19 +165,36 @@ export default class VM {
 			case "sound":
 				this.sound.handleMessage(msg.data);
 				break;
+			case "disk":
+				this.disk.handleMessage(msg.data).then(()=> {
+					this.sendMessage("memWrite", {
+						addr: 0xC0FF,
+						value: 1
+					});
+				});
+
+				// this.disk.read(0, msg.data).then(()=> {
+				// 	this.sendMessage("memWrite", {
+				// 		addr: 0xC0FF,
+				// 		value: 1
+				// 	});
+				// });
+				break;
 			case "stopped":
-				// console.log("STOPPED", msg.PC.toString(16));
+				console.log("STOPPED", msg.PC.toString(16), msg.op);
 				this.debugger.pause();
 				break;
 
-			case "hooked":
-				if(this.machine.hooks?.(this, msg.data)) {
-					setTimeout( () => this.sendMessage(msg.data.caller), 0);
+			case "hooked": {
+				const res= await this.machine.hooks?.(this, msg.data);
+				if(res.wannaKeepItRunning) {
+					setTimeout( () => this.sendMessage(msg.data.caller, res.data), 0);
 				} else {
 					this.debugger.pause();
 					this.debugger.update();
 				}
 				break;
+			}
 		}
 	}
 
@@ -181,8 +203,12 @@ export default class VM {
 		return new Promise(resolve => {
 			const {port1, port2}= new MessageChannel();
 			port1.onmessage= ({data:{cmd, id, data}}) => {
+				// console.error("waitMessage", cmd, id, data);
 				resolve(data);
 			};
+
+			// console.log("waitMessage", cmd, msgID, data);
+
 			this.cpuWorker.postMessage({cmd, id: msgID, data}, [port2]);
 		});
 	}
@@ -221,19 +247,27 @@ export default class VM {
 		this.sendMessage("run");
 	}
 
-	async step() {
-		await this.waitMessage("step");
-		this.video.update(this.gc);
+	step() {
+		return this.waitMessage("step").then(()=>{
+			setTimeout(()=>this.video.update(this.gc),0);
+		});
 	}
 
-	async stepOut() {
-		await this.waitMessage("stepOut");
-		this.video.update(this.gc);
+	stepOut() {
+		return this.waitMessage("stepOut").then(()=>{
+			setTimeout(()=>this.video.update(this.gc),0);
+		});
 	}
 
-	async stepOver() {
-		await this.waitMessage("stepOver");
-		this.video.update(this.gc);
+	stepOver() {
+		return this.waitMessage("stepOver").then(()=>{
+			setTimeout(()=>this.video.update(this.gc),0);
+		});
+	}
+
+	async reset() {
+		await this.waitMessage("reset");
+		// this.video.update(this.gc);
 	}
 
 	handleEvent(e) {

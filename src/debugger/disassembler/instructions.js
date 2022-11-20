@@ -67,7 +67,13 @@ const instructions= [
 	"BBR3 $,$",		//opBBR3,			//0x3F
 	"RTI",			//opRTI,			//0x40
 	"EOR ($,X)",	//opEOR_IX,			//0x41
-	"NOP",			//opNOP_IMMED,		//0x42
+
+	{				//opNOP_IMMED,		//0x42
+	0x44: "MVPw % % %",
+	0x01: "RDISK $ $ % %",
+	0x11: "RDISK %",
+	},
+
 	"NOP",			//opNOP,			//0x43
 	"NOP",			//opNOP_ZP,			//0x44
 	"EOR $",		//opEOR_ZP,			//0x45

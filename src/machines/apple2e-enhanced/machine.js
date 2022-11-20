@@ -1,5 +1,6 @@
 import processHooks from "../apple2/hooks.js";
 import { CxINTROM, CxSLOTROM, ROM } from "./applewin.rom";
+import Disk from "./disk.js";
 import HGR_IMG from "./hgr-img";
 import Sound from "./sound.js";
 import Video from "./video.js";
@@ -59,14 +60,32 @@ const machine= {
 			},
 			{
 				bank: 0,
+				addr: 0, //0xD000,
+				data: ROM,
+				type: "lgcard"
+			},
+			{
+				bank: 0,
 				addr: 0xD000,
-				data: ROM
+				data: "01 01 01 01",
+			},
+			{
+				bank: 1,
+				addr: 0xD000,
+				data: "02 02 02 02",
 			},
 			{
 				bank: 0,
 				addr: 0x0300,
-				data: "20 58 fc a9 aa 8d 80 7 8d 55 c0 8d 80 07 8d 54 c0 60"
+				data:
+				`
+				42 FF
+				64 72 61 77 49 6D 67 20 69 64 3A 25	79 20 61 64 64 72 3A 25 77 20 77 69	64 74 68 3A 25 62 20 68 65 69 67 68	74 3A 25 62 00
+				03
+				1C 00 24 81 27 81
+				`
 			},
+
 			{
 				bank: 0,
 				addr: 0x0800,
@@ -102,7 +121,8 @@ const machine= {
 	busSrcFile: "apple2/bus.js",
 	hooks: processHooks,
 	Video,
-	Sound
+	Sound,
+	Disk
 };
 
 export default machine;

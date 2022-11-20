@@ -11,58 +11,67 @@ function formatJumpAddr(addr) {
 	return utils.hexword(addr);
 }
 
-function disByte(byteData)
-{
-	return "$"+byteData.toString(16).padStart(2,"0");
-}
-
-function disWord(byteDataLow, byteDataHigh)
-{
-	return "$"+(byteDataLow+(byteDataHigh<<8)).toString(16).padStart(4,"0");
-}
-
 export default class Disassembler {
 
-	constructor(memory) {
+	constructor(vm, memory) {
+		this.vm= vm;
 		this.memory= new Uint8Array(memory);
 	}
 
-	readbyte(bank, addr) {
-		addr&= 0xFFFF;
-		return this.memory[bank*0x10000+addr];
+	async readbyte(bank, addr) {
+		return await this.vm.waitMessage("dbgReadBytes", {addr: addr & 0xFFFF, count: 1});
+		// addr&= 0xFFFF;
+		// return this.memory[bank*0x10000+addr];
 	}
 
-	readword(bank, addr) {
-		const base= bank*0x10000;
-		return (this.memory[base+((addr+1)&0xFFFF)]<<8) | this.memory[base+(addr&0xFFFF)];
+	async readword(bank, addr) {
+		return await this.readbyte(bank, addr+1)<<1 | await this.readbyte(bank, addr);
+		// const base= bank*0x10000;
+		// return (this.memory[base+((addr+1)&0xFFFF)]<<8) | this.memory[base+(addr&0xFFFF)];
 	}
 
-	disassemble(bank, addr, cpuState)
+	async disassemble(bank, addr, cpuState)
 	{
 		let len= 1;
-		let temp_str= instructions[this.readbyte(bank, addr)];
+		let temp_str;
 		let ret_str= "";
 
-		if(!temp_str) {
-			console.log(bank, addr);
+		const instrTemplate= instructions[await this.readbyte(bank, addr)];
+
+		// if(!temp_str) {
+		// 	console.log(bank, addr);
+		// }
+
+		// if(!instrTemplate)
+		// 	instrTemplate= "???";
+
+		if(typeof instrTemplate == "object") {
+			const extInstrOp= await this.readbyte(bank, addr+1);
+			temp_str= "?!?";
+			if(instrTemplate[extInstrOp]) {
+				temp_str= instrTemplate[extInstrOp];
+				len++;
+			}
 		}
+		else
+			temp_str= instrTemplate
 
 		const [op, addrMode] = temp_str.split(" ");
 		let comment= null;
 		for(let i= 0; i<temp_str.length; i++) {
 			switch(temp_str[i]) {
 				case "$": {
-					const byt= this.readbyte(bank, addr+len);
-					ret_str+= disByte(byt);
+					const byt= await this.readbyte(bank, addr+len);
+					ret_str+= utils.hexbyte(byt);
 
 					switch(addrMode) {
 						case "($),Y": {
-							const destAddr= this.readword(bank, byt);
+							const destAddr= await this.readword(bank, byt);
 							comment= `$${utils.hexword(destAddr)}+$${utils.hexbyte(cpuState.Y)}= $${utils.hexword(destAddr+cpuState.Y)}`;
 							break;
 						}
 						case "$": {
-							const value= this.readbyte(bank, byt);
+							const value= await this.readbyte(bank, byt);
 							comment= `$${utils.hexbyte(value)}`;
 							break;
 						}
@@ -73,7 +82,7 @@ export default class Disassembler {
 				}
 
 				case "r":
-					ret_str+= "$"+utils.hexword(addr + utils.signExtend(this.readbyte(bank, addr + len)) + 2);
+					ret_str+= "$"+utils.hexword(addr + utils.signExtend(await this.readbyte(bank, addr + len)) + 2);
 					len++;
 					if(cpuState.PC != addr)
 						break;
@@ -103,17 +112,25 @@ export default class Disassembler {
 					break;
 
 				case "%": {
-					const destAddr = this.readbyte(bank, addr + len) | (this.readbyte(bank, addr + len + 1) << 8);
+					const destAddr = await this.readbyte(bank, addr + len) | (await this.readbyte(bank, addr + len + 1) << 8);
 					const isFnCall = op[0] == "J"; //["JMP", "JSR"].includes(op);
 
 					let finalAddr;
 					switch(addrMode) {
 						case "(%)": {
-							finalAddr= utils.hexword(this.readbyte(bank, destAddr) | (this.readbyte(bank, destAddr + 1) << 8));
+							finalAddr= utils.hexword(await this.readbyte(bank, destAddr) | (await this.readbyte(bank, destAddr + 1) << 8));
 							break;
 						}
 						case "%": {
-							finalAddr= !isFnCall ? utils.hexbyte(this.readbyte(bank, destAddr)) : null;
+							finalAddr= !isFnCall ? utils.hexbyte(await this.readbyte(bank, destAddr)) : null;
+							break;
+						}
+						case "%,Y": {
+							comment= `$${utils.hexword(destAddr)}+$${utils.hexbyte(cpuState.Y)}= $${utils.hexword(destAddr+cpuState.Y)}`;
+							break;
+						}
+						case "%,X": {
+							comment= `$${utils.hexword(destAddr)}+$${utils.hexbyte(cpuState.X)}= $${utils.hexword(destAddr+cpuState.X)}`;
 							break;
 						}
 					}
@@ -135,18 +152,18 @@ export default class Disassembler {
 	}
 
 	_disassemble(addr) {
-		let opcode = opcodes[this.readbyte(bank, addr)];
+		const opcode = opcodes[this.readbyte(bank, addr)];
 		if (!opcode) {
 			return ["???", addr + 1];
 		}
-		let split = opcode.split(" ");
+		const split = opcode.split(" ");
 		if (!split[1]) {
 			return [opcode, addr + 1];
 		}
 		let param = split[1] || "";
 		let suffix = "";
 		let suffix2 = "";
-		let index = param.match(/(.*),([xy])$/);
+		const index = param.match(/(.*),([xy])$/);
 		let destAddr, indDest;
 		if (index) {
 			param = index[1];
