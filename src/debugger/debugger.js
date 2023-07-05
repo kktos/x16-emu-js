@@ -40,6 +40,13 @@ export default class Debugger {
 		this.isPanelMoving= false;
 		this.isPanelOffset= null;
 		// this.setupUI();
+
+		const refresh= () => {
+			this.mem.update();
+			setTimeout(refresh, 1000);
+		};
+
+		setTimeout(refresh, 1000);
 	}
 
 	async setup() {
@@ -93,16 +100,22 @@ export default class Debugger {
 				btn.addEventListener("change", (e) => this.onChange(e));
 			});
 
-		const btns= this.uiroot.querySelector("#btns");
-		btns.addEventListener('mousedown', (e) => {
+		this.uiroot
+			.querySelector("#btns")
+			.addEventListener('mousedown', (e) => {
 			this.isPanelMoving= true;
 			this.isPanelOffset= [
 				this.uiroot.offsetLeft - e.clientX,
 				this.uiroot.offsetTop - e.clientY
 			];
 		}, true);
-
-		document.addEventListener('mouseup', () => { this.isPanelMoving= false;	}, true);
+		document.addEventListener('mouseup', () => {
+			this.isPanelMoving= false;
+			localStorage.setItem("debugger-position",JSON.stringify({
+				top: this.uiroot.style.top,
+				left: this.uiroot.style.left
+			}));
+		}, true);
 		document.addEventListener('mousemove', (event) => {
 			event.preventDefault();
 			if (this.isPanelMoving) {
@@ -115,8 +128,15 @@ export default class Debugger {
 			}
 		}, true);
 
+		const dbgWindowPos= JSON.parse(localStorage.getItem("debugger-position"));
+		if(dbgWindowPos) {
+			this.uiroot.style.left= dbgWindowPos.left;
+			this.uiroot.style.top= dbgWindowPos.top;
+		}
+
 		this.updateBtns(false);
 		this.update();
+		this.uiroot.style.visibility= "visible";
 	}
 
 	onChange(e) {
@@ -207,24 +227,24 @@ export default class Debugger {
 				this.vm.stepOver().then(()=>this.update());
 				break;
 
-				case "step_into": {
-					performance.clearMarks();
-					performance.clearMeasures();
-					performance.mark("step");
-					this.vm.step().then(()=> {
-						// performance.measure("STEP", "step");
+			case "step_into": {
+				performance.clearMarks();
+				performance.clearMeasures();
+				performance.mark("step");
+				this.vm.step().then(()=> {
+					// performance.measure("STEP", "step");
 
-						this.update();
+					this.update();
 
-						performance.measure("TOTAL", "step");
+					performance.measure("TOTAL", "step");
 
-						performance.getEntriesByType("measure")
-							.forEach(entry => console.log(`${entry.name}:${entry.duration}`));
+					performance.getEntriesByType("measure")
+						.forEach(entry => console.log(`${entry.name}:${entry.duration}`));
 
 
-					});
-					break;
-				}
+				});
+				break;
+			}
 
 			case "clear-log":
 				console.clear();
@@ -269,13 +289,13 @@ export default class Debugger {
 
 	onClickRegister(e) {
 
-		if(e.target.className == "register") {
-			let value= prompt("Hexa value for register "+e.target.id);
+		if(e.target.className === "register") {
+			const value= prompt("Hexa value for register "+e.target.id);
 			this.vm.updateCPUregister(e.target.id, parseInt(value, 16));
 		}
 		else {
 			const target= e.target.parentElement;
-			if(target.className != "status")
+			if(target.className !== "status")
 				return;
 			this.vm.updateCPUregister(target.id, 1-target.querySelector(".flag").innerText);
 		}
@@ -387,11 +407,11 @@ export default class Debugger {
 
 	updateStack(cpuState) {
 		let dumpStr= "";
-		let stackAddr= (cpuState.SP-2) & 0xff;
+		const stackAddr= (cpuState.SP-2) & 0xff;
 		const currentSP= 0x100 | cpuState.SP;
 		for(let line= 0; line<10; line++) {
 			const addr= 0x100 | (stackAddr + line);
-			dumpStr+= `<div class="${addr == currentSP?"selected":""}">
+			dumpStr+= `<div class="${addr === currentSP?"selected":""}">
 							${utils.hexword(addr)}: ${utils.hexbyte(this.memory[addr])}
 						</div>`;
 		}

@@ -14,14 +14,14 @@ function formatJumpAddr(addr) {
 	return utils.hexword(addr);
 }
 
-function readbyte(bank, addr) {
-	return core.bus.read(addr, true);
+function readbyte(bank, addr, readingOpcode= false) {
+	return core.bus.read(addr, !readingOpcode);
 	// addr&= 0xFFFF;
 	// return this.memory[bank*0x10000+addr];
 }
 
-function readword(bank, addr) {
-	return core.bus.read(addr+1, true)<<8 | core.bus.read(addr, true);
+function readword(bank, addr, readingOpcode= false) {
+	return core.bus.read(addr+1, !readingOpcode)<<8 | core.bus.read(addr, !readingOpcode);
 	// const base= bank*0x10000;
 	// return (this.memory[base+((addr+1)&0xFFFF)]<<8) | this.memory[base+(addr&0xFFFF)];
 }
@@ -31,7 +31,7 @@ function disassemble(bank, addr) {
 	let temp_str;
 	let ret_str= "";
 
-	const instrTemplate= instructions[readbyte(bank, addr)];
+	const instrTemplate= instructions[readbyte(bank, addr, true)];
 
 	// if(!temp_str) {
 	// 	console.log(bank, addr);
@@ -41,7 +41,7 @@ function disassemble(bank, addr) {
 	// 	instrTemplate= "???";
 
 	if(typeof instrTemplate == "object") {
-		const extInstrOp= readbyte(bank, addr+1);
+		const extInstrOp= readbyte(bank, addr+1, true);
 		temp_str= "?!?";
 		if(instrTemplate[extInstrOp]) {
 			temp_str= instrTemplate[extInstrOp];
@@ -56,7 +56,7 @@ function disassemble(bank, addr) {
 	for(let i= 0; i<temp_str.length; i++) {
 		switch(temp_str[i]) {
 			case "$": {
-				const byt= readbyte(bank, addr+len);
+				const byt= readbyte(bank, addr+len, true);
 				ret_str+= utils.hexbyte(byt);
 
 				switch(addrMode) {
@@ -77,7 +77,7 @@ function disassemble(bank, addr) {
 			}
 
 			case "r":
-				ret_str+= "$"+utils.hexword(addr + utils.signExtend(readbyte(bank, addr + len)) + 2);
+				ret_str+= "$"+utils.hexword(addr + utils.signExtend(readbyte(bank, addr + len, true)) + 2);
 				len++;
 				if(core.PC != addr)
 					break;
@@ -107,7 +107,7 @@ function disassemble(bank, addr) {
 				break;
 
 			case "%": {
-				const destAddr = readbyte(bank, addr + len) | (readbyte(bank, addr + len + 1) << 8);
+				const destAddr = readbyte(bank, addr + len, true) | (readbyte(bank, addr + len + 1, true) << 8);
 				const isFnCall = op[0] == "J"; //["JMP", "JSR"].includes(op);
 
 				let finalAddr;

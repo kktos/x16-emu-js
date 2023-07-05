@@ -10,6 +10,7 @@ export default class MemViewer {
 		this.vm= dbg.vm;
 		this.dumpMemAddr= 0;
 		this.dumpMemBank= 0;
+		this.wannaRealAddr= false;
 
 		elm.addEventListener("wheel", (e) => this.onMouseWheel(e), {passive: true})
 		elm.addEventListener("click", (e)=> this.onMouseClick(e));
@@ -31,16 +32,21 @@ export default class MemViewer {
 
 			// this.dbg.getValueDlg();
 
-			value= parseInt(prompt(utils.hexbyte(bank)+":"+utils.hexword(addr) + ": VALUE ? (as hexa value)"), 16);
+			value= parseInt(prompt(utils.hexbyte(bank)+":"+utils.hexword(addr) + ": Hexa Value ?"), 16);
 			if(isNaN(value))
 				return;
 
 			// this.memory[bank*0x10000 + addr]= value & 0xFF;
-			await this.vm.waitMessage("memWrite", {addr, value: value & 0xFF});
+			await this.vm.waitMessage("memWrite", {addr: (bank << 16) + addr, value: value & 0xFF});
 
 			this.vm.updateVideo();
 		} else {
-			value= parseInt(prompt("ADDRESS ? (as hexa value)"), 16);
+			let addr= prompt("ADDRESS ? (prefix with ! for real addr)");
+			this.wannaRealAddr= addr?.match(/^!/) != null;
+			if(this.wannaRealAddr) {
+				addr= addr.slice(1);
+			}
+			value= parseInt(addr, 16);
 			if(isNaN(value))
 				return;
 			this.dumpMemAddr= value & 0xFFFF;
@@ -49,11 +55,11 @@ export default class MemViewer {
 		this.update();
 	}
 	async update() {
-		const bytes= await this.vm.waitMessage("dbgReadBytes", {addr: this.dumpMemAddr & 0xFFFF, count: 640});
+		const bytes= await this.vm.waitMessage((this.wannaRealAddr ? "dbgReadBytes" : "memReadBytes"), {addr: (this.dumpMemBank<<16) + this.dumpMemAddr, count: 640});
 		let dumpStr= "";
 		for(let line= 0; line<this.lineCount; line++) {
 			const addr= (this.dumpMemAddr + line*16) & 0xFFFF;
-			dumpStr+= `<div class="addr" id="${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}">${utils.hexbyte(this.dumpMemBank)}${utils.hexword(addr)}`;
+			dumpStr+= `<div class="addr ${this.wannaRealAddr?"real":""}" id="${utils.hexbyte(this.dumpMemBank)}:${utils.hexword(addr)}">${utils.hexbyte(this.dumpMemBank)}${utils.hexword(addr)}`;
 			let charsStr= "";
 			for(let column= 0; column<16; column++) {
 				let byte= bytes[line*16 + column];

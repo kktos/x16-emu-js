@@ -1,3 +1,4 @@
+// import { TEXT_LINES } from "../ram_map.js";
 
 export default async function processHooks(vm, cpu) {
 
@@ -5,6 +6,14 @@ export default async function processHooks(vm, cpu) {
 	let data= null;
 
 	switch(cpu.PC) {
+
+		// case 0xCABA: {
+		// 	const line= TEXT_LINES[ cpu.A ];
+		// 	console.log({line:line.toString(16)});
+		// 	await vm.memWriteBin(0, 0x28, [line & 0xFF, line >> 8]);
+		// 	data= {meta:{RTS:1}};
+		// 	break;
+		// }
 
 		case 0xC600: {
 

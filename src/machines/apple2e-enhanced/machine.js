@@ -1,9 +1,10 @@
 import processHooks from "../apple2/hooks.js";
-import { CxINTROM, CxSLOTROM, ROM } from "./applewin.rom";
+import { C1_C7_INTROM, C8_CF_INTROM, CxSLOTROM, LG_CARD_ROM } from "./applewin.rom";
+import { basicprog } from "./basicprog.js";
 import Disk from "./disk.js";
 import HGR_IMG from "./hgr-img";
 import Sound from "./sound.js";
-import Video from "./video.js";
+import Video from "./video/render.js";
 
 /**
  *
@@ -51,7 +52,12 @@ const machine= {
 			{
 				bank: 1,
 				addr: 0xC100,
-				data: CxINTROM
+				data: C1_C7_INTROM
+			},
+			{
+				bank: 1,
+				addr: 0xC800,
+				data: C8_CF_INTROM
 			},
 			{
 				bank: 0,
@@ -61,7 +67,7 @@ const machine= {
 			{
 				bank: 0,
 				addr: 0, //0xD000,
-				data: ROM,
+				data: LG_CARD_ROM,
 				type: "lgcard"
 			},
 			{
@@ -89,25 +95,7 @@ const machine= {
 			{
 				bank: 0,
 				addr: 0x0800,
-				data: `
-					00 00 00 00 00 00 00 00
-					20 2F FB 20 58 FC A9 00
-					48 AA 20 24 08 A0 0A 20
-					A8 FC 88 D0 FA 68 CD 5F
-					08 F0 06 18 69 01 48 D0
-					E8 60 A2 00 08 48 98 48
-					8A CD 5F 08 90 02 A9 00
-					0A AA BD 60 08 8D 5E 08
-					E8 BD 60 08 8D 40 08 A0
-					00 98 AA 98 20 A8 FC 2C
-					30 C0 E0 80 F0 0B CA D0
-					F2 88 D0 ED CE 5E 08 D0
-					E6 68 A8 68 28 60 01 10
-					01 08 01 18 FF 01 06 10
-					01 30 20 06 70 06 FF 06
-					01 A0 FF 02 04 1C 01 10
-					30 0B 30 07 50 09 01 64
-				`
+				data: basicprog
 			},
 			{
 				bank: 0,
@@ -117,7 +105,7 @@ const machine= {
 		],
 	},
 
-	debuggerOnBRK: true,
+	debuggerOnBRK: false,
 	busSrcFile: "apple2/bus.js",
 	hooks: processHooks,
 	Video,

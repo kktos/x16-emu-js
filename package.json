@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "",
   "main": "main.js",
-  "type": "module",
   "scripts": {
     "dev": "vite -c ./config.vite.js",
     "build": "vite build",
@@ -15,6 +14,11 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "vite": "^2.8.1"
+    "@types/node": "^20.3.3",
+    "@types/yargs": "^17.0.24",
+    "rome": "^12.1.3",
+    "typescript": "^5.1.6",
+    "vite": "^4.3.9",
+    "yargs": "^17.7.2"
   }
 }

@@ -1,11 +1,11 @@
-import { hexWord, EnumToName } from "./utils.mjs";
-import { parseSource } from "./parser.mjs";
-import { run } from "./vm.mjs";
+import { dumpArrays } from "./arrays.mjs";
 import { ERRORS } from "./defs.mjs";
-import { dumpVars } from "./vars.mjs";1
-import { dumpArrays } from "./arrays.mjs";1
-import { dumpStrings } from "./strings.mjs";
 import { list } from "./list.mjs";
+import { parseSource } from "./parser.mjs";
+import { dumpStrings } from "./strings.mjs";
+import { EnumToName, hexWord } from "./utils.mjs";
+import { dumpVars } from "./vars.mjs";
+import { run } from "./vm.mjs";
 
 
 const src= `

@@ -36,6 +36,8 @@ $C055 R/W PAGE2ON Select page2 display (or aux video memory)
 $C056 R/W HIRESOFF Select low resolution graphics
 $C057 R/W HIRESON Select high resolution graphics
 
+$C022 R/W TBCOLOR IIgs Screen Color: (0-3) Low Nibble is BG, (4-7) High Nibble is Text
+
 -- SOFT SWITCH STATUS FLAGS
 $C010 R7 AKD 1=key pressed 0=keys free (clears strobe)
 $C011 R7 BSRBANK2 1=bank2 available 0=bank1 available
@@ -151,14 +153,22 @@ const SWITCHES = {
 	// R7 PAGE2 1=video page2 selected or aux
 	PAGE2: 0xC01C,
 
-	// W INTCXROMOFF Enable slot ROM from $C100-$CFFF
+	// R/W TBCOLOR IIgs Screen Color: (0-3) Low Nibble is BG, (4-7) High Nibble is Text
+	TBCOLOR: 0xC022,
+
+	// W INTCXROMOFF Enable slot ROM from $C100-$C7FF (but $C800-$CFFF depends on INTC8ROM)
 	INTCXROMOFF: 0xC006,
 	// W INTCXROMON Enable main ROM from $C100-$CFFF
 	INTCXROMON: 0xC007,
 	// R7 INTCXROM 1=main $C100-$CFFF ROM active 0=slot active
 	INTCXROM: 0xC015,
+
 	// R7 SLOTC3ROM 1=slot $C3 ROM active 0=main $C3 ROM active
 	SLOTC3ROM: 0xC017,
+	// W SLOTC3ROMOFF Enable main ROM from $C300-$C3FF
+	SLOTC3ROMOFF: 0xC00A,
+	// W SLOTC3ROMON Enable slot ROM from $C300-$C3FF
+	SLOTC3ROMON: 0xC00B,
 
 
 	// W Enable main memory from $0000-$01FF & $D000-$FFFF
@@ -220,6 +230,24 @@ const SWITCHES = {
 
 	SLOT7FF: 0xC0FF,
 
+	// Slot 3 I/O
+	SLOT3_00: 0xC0B0,
+	SLOT3_01: 0xC0B1,
+	SLOT3_02: 0xC0B2,
+	SLOT3_03: 0xC0B3,
+	SLOT3_04: 0xC0B4,
+	SLOT3_05: 0xC0B5,
+	SLOT3_06: 0xC0B6,
+	SLOT3_07: 0xC0B7,
+	SLOT3_08: 0xC0B8,
+	SLOT3_09: 0xC0B9,
+	SLOT3_0A: 0xC0BA,
+	SLOT3_0B: 0xC0BB,
+	SLOT3_0C: 0xC0BC,
+	SLOT3_0D: 0xC0BD,
+	SLOT3_0E: 0xC0BE,
+	SLOT3_0F: 0xC0BF
+
 };
 
 export default class Bus {
@@ -247,12 +275,18 @@ export default class Bus {
 		this.col80On= false;
 		this.store80On= false;
 		this.altCharsetOn= false;
+
 		this.cxMainRomOn= false;
+		this.c8MainRomOn= false;
+		// off: internal rom | on: rom from the card
+		this.c3SlotRomOn= false;
+
 		this.altZPOn= false;
 		this.graphicOn= false;
 		this.HiResOn= false;
 		this.MixedOn= false;
 		this.lastBankUsed= 0;
+		this.tbColor= 0xF0;
 
 		this.lcBank= 0;
 		this.lcSelected= false;
@@ -274,6 +308,10 @@ export default class Bus {
 	}
 
 	read(addr, isDebugActive) {
+
+		if(isDebugActive)
+			return this._read( addr >> 16, addr & 0xFFFF);
+
 		addr= addr & 0xFFFF;
 
 		// $0000-$01FF
@@ -305,11 +343,33 @@ export default class Bus {
 
 		// $C100-$cFFF
 		if(addr>0xC0FF) {
+			if(!this.cxMainRomOn) {
+				if(addr===0xCFFF) {
+					// console.log(addr.toString(16), "c8MainRomOn= false");
+					this.c8MainRomOn= false;
+					return this._read(1, addr);
+				}
+			}
+
+			if(addr>0xC7FF) {
+				return this._read(this.cxMainRomOn || this.c8MainRomOn ? 1 : 0, addr);
+			}
+
+			// if(addr>=0xc300)
+			// 	console.log(addr.toString(16));
+
+			if(addr >= 0xC300 && addr <= 0xC3FF) {
+				// console.log(addr.toString(16), "c8MainRomOn= true");
+				this.c8MainRomOn= true;
+			}
+
 			return this._read(this.cxMainRomOn ? 1 : 0, addr);
 		}
 
-		if(isDebugActive)
-			return 0;
+		// if(isDebugActive)
+		// 	return 0;
+
+		// this.c8MainRomOn= false;
 
 		let value= 0;
 		switch(addr) {
@@ -326,6 +386,9 @@ export default class Bus {
 			case SWITCHES.INTCXROM:
 				value= this.cxMainRomOn ? 0x80 : 0;
 				break;
+			case SWITCHES.SLOTC3ROM:
+				value= this.c3SlotRomOn;
+				break;
 
 			case SWITCHES.ALTZP:
 				value= this.altZPOn ? 0x80 : 0;
@@ -339,9 +402,6 @@ export default class Bus {
 				break;
 			case SWITCHES.PAGE2:
 				value= this.videoPage ? 0x80 : 0;
-				break;
-
-			case SWITCHES.SLOTC3ROM:
 				break;
 
 			case SWITCHES["80COL"]:
@@ -397,6 +457,10 @@ export default class Bus {
 			case SWITCHES.HIRESON:
 				value= (this.HiResOn=0x80);
 				this.controller.postMessage({cmd:"video", data:{mode: "high"}});
+				break;
+
+			case SWITCHES.TBCOLOR:
+				value= this.tbColor;
 				break;
 
 			//
@@ -551,6 +615,10 @@ export default class Bus {
 	}
 
 	write(addr, value) {
+
+		if(addr>0xFFFF)
+			return this._write(addr >> 16, addr & 0xFFFF, value);
+
 		addr&= 0xFFFF;
 
 		if(addr >= 0xD000) {
@@ -572,6 +640,7 @@ export default class Bus {
 			if(addr < 0x0800 && addr >= 0x0400) {
 				const bank= this.store80On ? this.videoPage : this.writeBank;
 				this._write(bank, addr, value);
+				this.controller.postMessage({cmd:"video", data:{mode: "mem", bank, addr}});
 				return;
 			}
 
@@ -633,11 +702,42 @@ export default class Bus {
 				this.controller.postMessage({cmd:"video", data:{mode: "col80"}});
 				break;
 
+			case SWITCHES.TBCOLOR:
+				this.tbColor= value;
+				this.controller.postMessage({cmd:"video", data:{mode: "tbcolor", value}});
+				break;
+
+			case SWITCHES.SLOT3_00:
+			case SWITCHES.SLOT3_01:
+			case SWITCHES.SLOT3_02:
+			case SWITCHES.SLOT3_03:
+			case SWITCHES.SLOT3_04:
+			case SWITCHES.SLOT3_05:
+			case SWITCHES.SLOT3_06:
+			case SWITCHES.SLOT3_07:
+			case SWITCHES.SLOT3_08:
+			case SWITCHES.SLOT3_09:
+			case SWITCHES.SLOT3_0A:
+			case SWITCHES.SLOT3_0B:
+			case SWITCHES.SLOT3_0C:
+			case SWITCHES.SLOT3_0D:
+			case SWITCHES.SLOT3_0E:
+			case SWITCHES.SLOT3_0F:
+				this.controller.postMessage({cmd:"video", data:{mode: "ctrl", addr, value}});
+				break;
+
+			// ROMs
 			case SWITCHES.INTCXROMOFF:
 				this.cxMainRomOn= false;
 				break;
 			case SWITCHES.INTCXROMON:
 				this.cxMainRomOn= true;
+				break;
+			case SWITCHES.SLOTC3ROMOFF:
+				this.c3SlotRomOn= false;
+				break;
+			case SWITCHES.SLOTC3ROMON:
+				this.c3SlotRomOn= true;
 				break;
 
 			case SWITCHES.ALZTPOFF:
@@ -666,8 +766,8 @@ export default class Bus {
 	}
 
 	writeHexa(bank, addr, hexString, type) {
-		// console.log("writeHexa", type ?? "main", bank.toString(16).padStart(2,"0"), addr.toString(16).padStart(4,"0"), hexString.slice(0,32).trim());
 		const values= hexString.match(/[0-9a-fA-F]+/g);
+		// console.log("writeHexa", type ?? "main", bank.toString(16).padStart(2,"0"), addr.toString(16).padStart(4,"0"), values.join(" "));
 		for(let idx= 0; idx<values.length; idx++)
 			this._write(bank, addr++, parseInt(values[idx],16), type);
 		return addr;
@@ -683,6 +783,58 @@ export default class Bus {
 	writeString(bank, addr, str) {
 		[...str].forEach(c => this._write(bank, addr++, c.charCodeAt(0)));
 		return addr;
+	}
+
+	search(from, to, hexString) {
+		let start= from;
+		let end= to;
+
+		if(typeof start === "string")
+			start= parseInt(start, 16);
+		if(typeof end === "string")
+			end= parseInt(end, 16);
+
+		if(end<start) {
+			const tmp= start;
+			start= end;
+			end= tmp;
+		}
+
+		const check= (addr) => {
+			const byte= this.memory.main[addr];
+			if(byte !== values[0])
+				return false;
+
+			let endRange= addr + values.length-1;
+			if(endRange>end)
+				return false;
+
+			let valIdx= values.length-1;
+			while(valIdx && (values[valIdx] === this.memory.main[endRange])) {
+				valIdx--;
+				endRange--;
+			}
+
+			return valIdx ? false : true;
+
+		};
+
+		const values= hexString.match(/[0-9a-fA-F]+/g).map((val) => parseInt(val,16));
+
+		console.log("SEARCH", start.toString(16), end.toString(16), values);
+
+		let addr= from;
+		let count= 16_711_680;
+		while(count && addr <= end) {
+			if(check(addr)) {
+				console.log("found at",addr.toString(16));
+				return;
+			}
+			addr++;
+			count--;
+		}
+		console.log("not found", count);
+
 	}
 
 	readKeyboard() {

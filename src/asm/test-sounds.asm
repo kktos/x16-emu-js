@@ -1,32 +1,3 @@
-import machine from "./machines/apple2e-enhanced/machine.js";
-import VM from "./vm.js";
-import {hexbyte} from "./utils.js";
-
-// import machine from "./machines/klaus-test-suite/machine.js";
-// import machine from "./machines/apple2-plus/machine.js";
-
-async function main() {
-	const canvas= document.getElementById("screen");
-	const vm= new VM(canvas, machine);
-	await vm.setup();
-	vm.start();
-
-	window.R= async (bank, addr, isDebug) => {
-		const rez= await vm.DBG_memRead(bank, addr, isDebug);
-		console.log(hexbyte(rez));
-	};
-	window.W= async (bank, addr, value) => {
-		await vm.DBG_memWrite(bank, addr, value);
-	};
-	window.S= async (from, to, value) => {
-		await vm.DBG_memSearch(from, to, value);
-	};
-}
-
-
-main();
-
-const src=`
 HOME EQU $FC58 ;CLEAR SCREEN
 INIT EQU $FB2F ;HOME CURSOR
 SPKR EQU $C030 ;SPEAKER CLICK OUTPUT
@@ -38,6 +9,7 @@ WAIT EQU $FCA8 ;TIME DELAY SET BY ACCUMULATOR
 ; TIME DELAY.
 
 
+		.segment BOOT1
 
 		.ORG $800
 
@@ -105,47 +77,27 @@ EXIT4 	PLA 			;RESTORE REGISTERS
 		PLP
 		RTS 			;AND EXIT
 
-TRPCNT4
-		.BYT $01			;TRIP COUNT DECREMENTED HERE
-FLNGTH4
-		.BYT $10			;SIXTEEN AVAILABLE SOUNDS
+TRPCNT4	.BYT $01			;TRIP COUNT DECREMENTED HERE
+FLNGTH4	.BYT $10			;SIXTEEN AVAILABLE SOUNDS
 
 ; SIXTEEN AVAILABLE SOUNDS
 ; *** SOUND EFFECT FILES ***
 ; EACH NOTE TAKES A TRIP AND A SWEEP VALUE IN SEQUENCE. 175
 ; ADD $80 TO NUMBER OF GEIGER CLICKS WANTED.
 
-SEFO
-		.BYT $01,$08 ; TICK
-SEF1
-		.BYT $01,$18 ; WHOPIDOOP
-SEF2
-		.BYT $FF,$01 ; PIP
-SEF3
-		.BYT $06,$10 ; PHASOR
-SEF4
-		.BYT $01,$30 ; MUSIC SCALE
-SEF5
-		.BYT $20,$06 ; SHORT BRASS
-SEF6
-		.BYT $70,$06 ; MED1.UM BkASS
-SEF7
-		.BYT $FF,$06 ; LONG BRASS
-SEF8
-		.BYT $01,$A0 ; GEIGER
-SEF9
-		.BYT $FF,$02 ; GLEEP
-SEF10
-		.BYT $04,$1C ; GLISSADE
-SEF11
-		.BYT $01,$10 ; QWIP
-SEF12
-		.BYT $30,$0B ; OBOE
-SEF13
-		.BYT $30,$07 ; FRENCH HORN
-SEF14
-		.BYT $50,$09 ; ENGLISH HORN
-SEF15
-		.BYT $01,$64 ; TIME BOMB
-`;
-document.getElementById("editor").innerText= src;
+SEFO	.BYT $01,$08 ; TICK
+SEF1	.BYT $01,$18 ; WHOPIDOOP
+SEF2	.BYT $FF,$01 ; PIP
+SEF3	.BYT $06,$10 ; PHASOR
+SEF4	.BYT $01,$30 ; MUSIC SCALE
+SEF5	.BYT $20,$06 ; SHORT BRASS
+SEF6	.BYT $70,$06 ; MED1.UM BkASS
+SEF7	.BYT $FF,$06 ; LONG BRASS
+SEF8	.BYT $01,$A0 ; GEIGER
+SEF9	.BYT $FF,$02 ; GLEEP
+SEF10	.BYT $04,$1C ; GLISSADE
+SEF11	.BYT $01,$10 ; QWIP
+SEF12	.BYT $30,$0B ; OBOE
+SEF13	.BYT $30,$07 ; FRENCH HORN
+SEF14	.BYT $50,$09 ; ENGLISH HORN
+SEF15	.BYT $01,$64 ; TIME BOMB

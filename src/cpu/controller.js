@@ -309,6 +309,11 @@ async function OnMessage({ports, data:{cmd, id, data}})
 			recipient?.postMessage({cmd, id });
 			break;
 
+		case "memSearch":
+			core.bus.search(data.from, data.to, data.value);
+			recipient?.postMessage({cmd, id });
+			break;
+
 		/*
 			memReadBytes(addr, count|end)
 

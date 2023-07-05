@@ -81,6 +81,7 @@ export default class VM {
 		this.sendMessage("addHook", {bank:0, addr: 0xC600});
 		this.sendMessage("addHook", {bank:0, addr: 0xC65C});
 		this.sendMessage("addHook", {bank:0, addr: 0xBD00});
+		// this.sendMessage("addHook", {bank:1, addr: 0xCABA});
 
 	}
 
@@ -104,6 +105,28 @@ export default class VM {
 			bank,
 			addr,
 			values
+		});
+	}
+
+	DBG_memRead(bank, addr, isDebug) {
+		return this.waitMessage((isDebug ? "dbgReadBytes" : "memReadBytes"), {
+			bank,
+			addr,
+			count: 1
+		});
+	}
+	DBG_memWrite(bank, addr, value) {
+		return this.waitMessage("memWrite", {
+			bank,
+			addr,
+			value
+		});
+	}
+	DBG_memSearch(from, to, value) {
+		return this.waitMessage("memSearch", {
+			from,
+			to,
+			value
 		});
 	}
 
