@@ -11,7 +11,19 @@
 	<div contentEditable="true" id="machine">
 		<canvas id="screen"></canvas>
 	</div>
-	<div id="debugger">
+
+	<div id="asm" window>
+		<div id="btns" window-title="close">
+			<div></div>
+			<div id="asm-open" class="btn">OPEN</div>
+			<div id="asm-asm" class="btn">ASSEMBLE</div>
+		</div>
+		<div class="asm-src">
+			<pre id="editor" contenteditable="true"></pre>
+		</div>
+	</div>
+
+	<div id="debugger" window>
 		<div id="mem"></div>
 		<div id="disasm"></div>
 		<div id="stack"></div>
@@ -31,7 +43,7 @@
 				<div id="c" class="status"><div>C</div><div class="flag"></div></div>
 			</div>
 		</div>
-		<div id="btns">
+		<div id="btns" window-title>
 			<div id="reset" class="btn">RESET</div>
 			<img id="play" class="icn btn play" src="/assets/icons/debug_play.svg" />
 			<img id="pause" class="icn btn pause" src="/assets/icons/debug_pause.svg" />
@@ -44,17 +56,6 @@
 			<div id="asm-start" class="btn">ASSEMBLER</div>
 			<div id="boot-disk" class="btn">DISK <span id="diskname"></span></div>
 			<div id="clear-log" class="btn">CLEAR LOG</div>
-		</div>
-		<div class="asm">
-			<div id="btns">
-				<div></div>
-				<div id="asm-close" class="btn">BACK</div>
-				<div id="asm-open" class="btn">OPEN</div>
-				<div id="asm" class="btn">ASSEMBLE</div>
-			</div>
-			<div class="asm-src">
-				<pre id="editor" contenteditable="true"></pre>
-			</div>
 		</div>
 		<div class="log"></div>
 		<dialog id="editValueDlg">
@@ -74,6 +75,7 @@
 			</form>
 		  </dialog>
 	</div>
+
     <script type="module" src="/src/main.js"></script>
 	<script>
 		fpscounter_options = {

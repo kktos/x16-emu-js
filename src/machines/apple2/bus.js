@@ -491,7 +491,7 @@ export default class Bus {
 			case SWITCHES.LC_C08D:
 				// select LCBank1
 				// read ROM write ram
-				this.lcWriteEnabled= !this.lcSelected && this.lcBank == 0;
+				this.lcWriteEnabled= !this.lcSelected && this.lcBank === 0;
 				this.lcBank= 0;
 				this.lcSelected= false;
 				value= 1;
@@ -511,7 +511,7 @@ export default class Bus {
 			case SWITCHES.LC_C08F:
 				// select LCBank1
 				// read ram write ram
-				this.lcWriteEnabled= this.lcSelected && this.lcBank == 0;
+				this.lcWriteEnabled= this.lcSelected && this.lcBank === 0;
 				this.lcBank= 0;
 				this.lcSelected= true;
 				value= 1;
@@ -575,8 +575,7 @@ export default class Bus {
 
 			case SWITCHES.SLOT7FF:
 				value= this.isDiskOpDone ? 0x80 : 0;
-				if(this.isDiskOpDone)
-					this.isDiskOpDone= false;
+				this.isDiskOpDone= false;
 				break;
 
 			//
@@ -616,7 +615,7 @@ export default class Bus {
 
 	write(addr, value) {
 
-		if(addr>0xFFFF)
+		if(addr > 0xFFFF)
 			return this._write(addr >> 16, addr & 0xFFFF, value);
 
 		addr&= 0xFFFF;
@@ -722,9 +721,16 @@ export default class Bus {
 			case SWITCHES.SLOT3_0C:
 			case SWITCHES.SLOT3_0D:
 			case SWITCHES.SLOT3_0E:
-			case SWITCHES.SLOT3_0F:
 				this.controller.postMessage({cmd:"video", data:{mode: "ctrl", addr, value}});
 				break;
+
+			case SWITCHES.SLOT3_0F: {
+				this.controller.halt();
+				const {port1, port2}= new MessageChannel();
+				port1.onmessage= () => this.controller.unhalt();
+				this.controller.postMessage({cmd:"video", data:{mode: "ctrl", addr, value}}, [port2]);
+				break;
+			}
 
 			// ROMs
 			case SWITCHES.INTCXROMOFF:
@@ -749,10 +755,12 @@ export default class Bus {
 
 			case SWITCHES.ALTCHARSETOFF:
 				this.altCharsetOn= false;
+				this.controller.postMessage({cmd:"video", data:{mode: "altCharset", value: this.altCharsetOn}});
 				break;
 			case SWITCHES.ALTCHARSETON:
 				this.altCharsetOn= true;
-				break;
+				this.controller.postMessage({cmd:"video", data:{mode: "altCharset", value: this.altCharsetOn}});
+			break;
 
 			case SWITCHES.BANKSEL:
 				this.bankSelected= value+1;
@@ -841,7 +849,7 @@ export default class Bus {
 		if(this.keyWasRead)
 			return this.lastKeypressed | 0x80;
 
-		const keyPressed= [...this.keys.map.entries()].find(k=>k[1]==true);
+		const keyPressed= [...this.keys.map.entries()].find(k=>k[1]===true);
 		if(!keyPressed)
 			return 0;
 

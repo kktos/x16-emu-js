@@ -34,7 +34,6 @@ BODY {
 					/* "log      log     log " 1fr */
 					/auto 80px auto;
 	grid-gap: 10px;
-	border: 1px solid white;
 	overflow: hidden;
 
 }
@@ -183,10 +182,8 @@ INPUT {
 .label {
 	color: #000000;
 }
-.asm {
+#asm {
 	visibility: hidden;
-	grid-column: 1 / 4;
-    grid-row: 1 / 4;
     background: black;
     margin: 0;
 	display: grid;
@@ -194,11 +191,16 @@ INPUT {
         "btns" 30px
         "src"/auto;
 	z-index: 1;
-	position: relative;
+	position: absolute;
+	top: 300px;
+	left: 300px;
+	width: 500px;
+	height: 500px;
 }
 #editor {
-	font-size: 1.5em;
+	font-size: 1em;
 	margin-inline: 10px;
+	color: white;
 }
 .asm-src {
     grid-area: src;
@@ -211,4 +213,11 @@ INPUT {
 }
 [contenteditable]:focus {
     outline: 0px solid transparent;
+}
+
+[window] {
+	outline: white solid 1px;
+}
+[window-title] {
+	position: relative;
 }

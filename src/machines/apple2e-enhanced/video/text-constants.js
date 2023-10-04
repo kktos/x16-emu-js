@@ -44,4 +44,20 @@ export const textColors= [
 	{ name:"White"      , color: "#FFFFFF" },
 ];
 
-export const colorAddr= 0x020400;
+// export const colorAddr= 0x020400;
+
+export const MON_WNDLEFT= 	0x20; //left column of scroll window
+export const MON_WNDWDTH= 	0x21; //width of scroll window
+export const MON_WNDTOP=  	0x22; //top of scroll window
+export const MON_WNDBTM=  	0x23; //bottom of scroll window
+
+export const MON_CH=      	0x24; //cursor horizontal displacement
+export const MON_CV=      	0x25; //cursor vertical displacement
+
+export const MON_BASL=    	0x28; //base address for text output (lo)
+export const MON_BASH=    	0x29; //base address for text output (hi)
+
+export const MON_CSWL=    	0x36; //character output hook (lo)
+export const MON_CSWH=    	0x37; //character output hook (hi)
+export const OURCH=			0x57B; //80-col CH
+export const OURCV=         0x5FB; //80-col CV

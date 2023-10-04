@@ -1,6 +1,8 @@
-import { assemble } from "../6502assembler/6502assembler.js";
+import { assemble } from "../../assets/libs/libasm6502.js";
+// import { assemble } from "../6502assembler/6502assembler.js";
 import * as utils from "../utils.js";
 import MemViewer from "./mem.js";
+import {window_init} from "./window.js";
 
 // Some attempt at making prevInstruction more accurate; score the sequence of instructions leading
 // up to the target by counting all "common" instructions as a point. The highest-scoring run of
@@ -88,7 +90,7 @@ export default class Debugger {
 
 		this.UIbps.addEventListener("click", (e)=> this.onClickBreakpoints(e));
 
-		this.uiroot
+		document
 			.querySelectorAll(".btn")
 			.forEach(btn => {
 				btn.addEventListener("click", (e) => this.onClickBtn(e));
@@ -100,39 +102,8 @@ export default class Debugger {
 				btn.addEventListener("change", (e) => this.onChange(e));
 			});
 
-		this.uiroot
-			.querySelector("#btns")
-			.addEventListener('mousedown', (e) => {
-			this.isPanelMoving= true;
-			this.isPanelOffset= [
-				this.uiroot.offsetLeft - e.clientX,
-				this.uiroot.offsetTop - e.clientY
-			];
-		}, true);
-		document.addEventListener('mouseup', () => {
-			this.isPanelMoving= false;
-			localStorage.setItem("debugger-position",JSON.stringify({
-				top: this.uiroot.style.top,
-				left: this.uiroot.style.left
-			}));
-		}, true);
-		document.addEventListener('mousemove', (event) => {
-			event.preventDefault();
-			if (this.isPanelMoving) {
-				const mousePosition= {
-					x : event.clientX,
-					y : event.clientY
-				};
-				this.uiroot.style.left= (mousePosition.x + this.isPanelOffset[0]) + 'px';
-				this.uiroot.style.top= (mousePosition.y + this.isPanelOffset[1]) + 'px';
-			}
-		}, true);
 
-		const dbgWindowPos= JSON.parse(localStorage.getItem("debugger-position"));
-		if(dbgWindowPos) {
-			this.uiroot.style.left= dbgWindowPos.left;
-			this.uiroot.style.top= dbgWindowPos.top;
-		}
+		window_init();
 
 		this.updateBtns(false);
 		this.update();
@@ -168,12 +139,7 @@ export default class Debugger {
 
 		switch(e.target.id) {
 			case "asm-start": {
-				document.querySelector(".asm").style.visibility= "visible";
-				break;
-			}
-
-			case "asm-close": {
-				document.querySelector(".asm").style.visibility= "hidden";
+				document.querySelector("#asm").style.visibility= "visible";
 				break;
 			}
 
@@ -190,11 +156,18 @@ export default class Debugger {
 				break;
 			}
 
-			case "asm": {
+			case "asm-asm": {
 				const src= document.getElementById("editor").innerText;
-				console.clear();
-				assemble(src)
-						.then(code => this.storeInMem(code));
+				const opts= {
+					readFile: () => ({path: "", content: src}),
+				};
+				try {
+					const obj= assemble("", opts);
+					this.storeInMem(obj);
+				}
+				catch(e) {
+					console.log(e.message);
+				}
 				break;
 			}
 
@@ -259,9 +232,10 @@ export default class Debugger {
 		this.update();
 	}
 
-	storeInMem(data) {
-		data.forEach((value, addr) => {
-			this.memory[addr]= value;
+	storeInMem(obj) {
+		let addr= obj.segments.CODE.start;
+		obj.obj.CODE.forEach((value) => {
+			this.memory[addr++]= value;
 		});
 	}
 
@@ -280,17 +254,17 @@ export default class Debugger {
 
 	onClickDisasm(e) {
 		const instructionID= e.target.parentElement.id;
-		const bank= parseInt(document.querySelector("#"+instructionID+" .bank").attributes["data-bank"]?.value, 16);
-		const addr= parseInt(document.querySelector("#"+instructionID+" .addr").attributes["data-addr"]?.value, 16);
+		const bank= parseInt(document.querySelector(`#${instructionID} .bank`).attributes["data-bank"]?.value, 16);
+		const addr= parseInt(document.querySelector(`#${instructionID} .addr`).attributes["data-addr"]?.value, 16);
 
-		if(!isNaN(bank) && !isNaN(addr))
+		if(!Number.isNaN(bank) && !Number.isNaN(addr))
 			this.toggleBreakpoint(bank*0x10000 + addr);
 	}
 
 	onClickRegister(e) {
 
 		if(e.target.className === "register") {
-			const value= prompt("Hexa value for register "+e.target.id);
+			const value= prompt(`Hexa value for register ${e.target.id}`);
 			this.vm.updateCPUregister(e.target.id, parseInt(value, 16));
 		}
 		else {

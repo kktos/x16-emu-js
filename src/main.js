@@ -1,6 +1,6 @@
 import machine from "./machines/apple2e-enhanced/machine.js";
-import VM from "./vm.js";
 import {hexbyte} from "./utils.js";
+import VM from "./vm.js";
 
 // import machine from "./machines/klaus-test-suite/machine.js";
 // import machine from "./machines/apple2-plus/machine.js";
@@ -27,125 +27,107 @@ async function main() {
 main();
 
 const src=`
-HOME EQU $FC58 ;CLEAR SCREEN
-INIT EQU $FB2F ;HOME CURSOR
-SPKR EQU $C030 ;SPEAKER CLICK OUTPUT
-WAIT EQU $FCA8 ;TIME DELAY SET BY ACCUMULATOR
+	.cpu "65c02"
 
+	CMD 	= $C0B0
+	VALUE 	= $C0B1
+	ADDRH 	= $C0B2
+	ADDRL 	= $C0B3
+	COUT  	= $C0BF
 
-; THE DEMO PROGRAM PLAYS EACH OF THE SIXTEEN
-; SOUND EFFECTS IN ORDER, SEPARATED BY A
-; TIME DELAY.
+	SET_CHAR_COLOR	= $01
+	WRITE_CHAR 		= $02
+	SET_MODE 		= $06
+	OUTPUT_STRING 	= $25
 
+	.ORG $1000
 
+	sta $C051
+	; set videoMode = 0
+	lda #SET_MODE
+	sta CMD
+	lda #0
+	sta VALUE
 
-		.ORG $800
+	; lda #WRITE_CHAR
+	; sta CMD
+	; lda #0
+	; sta ADDRH
+	; lda #0
+	; sta ADDRL
+	; lda #"X
+	; sta VALUE
 
-DEMO4	JSR INIT 		;MAKE SCREEN BLANK
-		JSR HOME
-		LDA #$00 		;START WITH FIRST NOTE
-		PHA 			;AND SAVE ON STACK
+	; lda #WRITE_CHAR
+	; sta CMD
+	; lda #39
+	; sta ADDRH
+	; lda #0
+	; sta ADDRL
+	; lda #"X
+	; sta VALUE
 
-NXTNOT4 TAX
-		JSR OBNOX4 		;AND PLAY IT
-		LDY #10			;STALL FOR TIME
+	; lda #WRITE_CHAR
+	; sta CMD
+	; lda #0
+	; sta ADDRH
+	; lda #24
+	; sta ADDRL
+	; lda #"X
+	; sta VALUE
 
-STALL4 	JSR WAIT
-		DEY
-		BNE STALL4 		;TILL DELAY DONE
+	; lda #WRITE_CHAR
+	; sta CMD
+	; lda #39
+	; sta ADDRH
+	; lda #24
+	; sta ADDRL
+	; lda #"X
+	; sta VALUE
 
-		PLA 			;GET NOTE NUMBER
-		CMP FLNGTH4 	;DONE WITH LAST NOTE?
-		BEQ DONE4 		;YES, EXIT
+	jmp print_string
 
-		CLC
-		ADC #$01 		;NO, PICK NEXT NOTE
-		PHA
-		BNE NXTNOT4 	;ALWAYS
+	ldx #0
+loop
 
-DONE4	RTS 			; AND EXIT
+	lda #SET_CHAR_COLOR
+	sta CMD
+	lda color
+	sta VALUE
+	inc color
 
+	lda text,x
+	beq exit
+	ora #$80
+	sta COUT
+	inx
+	bne loop
 
-BASENT4 LDX #$00 		;BASIC POKE HERE+1
-OBNOX4	PHP 			;ML ENTRY POINT
-		PHA
-		TYA 			;SAVE P,A, AND Y REGS
-		PHA
+print_string
 
-		TXA 			;RANGE CHECK ON SELECTION
-		CMP FLNGTH4 	;TO MAKE SURE ITS IN FILE
-		BCC LOK4
-		LDA #$00 		;DEFAULT TO ZERO SELECTION
-LOK4 	ASL 			;AND DOUBLE FILE POINTER
-		TAX
-		LDA SEFO,X 		;GET NUMBER OF TRIPS
-		STA TRPCNT4 	;AND SAVE
-		INX
-		LDA SEFO,X 		;GET SWEEP RANGE
-		STA SWEEP4+1 	;AND SAVE
+	lda #SET_CHAR_COLOR
+	sta CMD
+	lda #$56
+	sta VALUE
 
-SWEEP4 	LDY #$00 		;SWEEP VALUE POKED HERE
-NXTSWP4 TYA
-		TAX 			;DURATION
-NXTCYC4 TYA 			;PITCH
-		JSR WAIT
-		BIT SPKR 		;WRAP SPEAKER
-		CPX #$80 		;J BYPASS IF GEIGER
-		BEQ EXIT4 		;SPECIAL EFFECT
-		DEX
-		BNE NXTCYC4 	;ANOTHER CYCLE
-		DEY
-		BNE NXTSWP4 	;GO UP IN PITCH
-		DEC TRPCNT4 	;MADE ALL TRIPS?
-		BNE SWEEP4 		;NO, REPEAT
+	lda #OUTPUT_STRING
+	sta CMD
+	lda #>ads
+	sta ADDRH
+	lda #<ads+1
+	sta ADDRL
+	lda ads
+	sta VALUE
 
-EXIT4 	PLA 			;RESTORE REGISTERS
-		TAY
-		PLA
-		PLP
-		RTS 			;AND EXIT
+exit
+	lda #SET_CHAR_COLOR
+	sta CMD
+	stz VALUE
+	rts
 
-TRPCNT4
-		.BYT $01			;TRIP COUNT DECREMENTED HERE
-FLNGTH4
-		.BYT $10			;SIXTEEN AVAILABLE SOUNDS
+color 	.db 00
+text 	.cstr "THIS IS A TEST"
+ads 	.pstr "GUINNESS IS GOOD FOR YOU"
 
-; SIXTEEN AVAILABLE SOUNDS
-; *** SOUND EFFECT FILES ***
-; EACH NOTE TAKES A TRIP AND A SWEEP VALUE IN SEQUENCE. 175
-; ADD $80 TO NUMBER OF GEIGER CLICKS WANTED.
-
-SEFO
-		.BYT $01,$08 ; TICK
-SEF1
-		.BYT $01,$18 ; WHOPIDOOP
-SEF2
-		.BYT $FF,$01 ; PIP
-SEF3
-		.BYT $06,$10 ; PHASOR
-SEF4
-		.BYT $01,$30 ; MUSIC SCALE
-SEF5
-		.BYT $20,$06 ; SHORT BRASS
-SEF6
-		.BYT $70,$06 ; MED1.UM BkASS
-SEF7
-		.BYT $FF,$06 ; LONG BRASS
-SEF8
-		.BYT $01,$A0 ; GEIGER
-SEF9
-		.BYT $FF,$02 ; GLEEP
-SEF10
-		.BYT $04,$1C ; GLISSADE
-SEF11
-		.BYT $01,$10 ; QWIP
-SEF12
-		.BYT $30,$0B ; OBOE
-SEF13
-		.BYT $30,$07 ; FRENCH HORN
-SEF14
-		.BYT $50,$09 ; ENGLISH HORN
-SEF15
-		.BYT $01,$64 ; TIME BOMB
 `;
 document.getElementById("editor").innerText= src;

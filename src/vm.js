@@ -3,12 +3,12 @@ import Debugger from "./debugger/debugger.js";
 import ENV from "./env.js";
 import KeyMap from "./keymap.js";
 
-let lastTime,
-	acc,
-	inc= ENV.FPS,
-	msgcounter= 0,
-	speeds= [0,0],
-	speedIdx= 0;
+let lastTime;
+let acc;
+const inc= ENV.FPS;
+let msgcounter= 0;
+const speeds= [0,0];
+let speedIdx= 0;
 
 const OneMHz= 1_000_000 * ENV.FPS | 0;
 export default class VM {
@@ -37,7 +37,7 @@ export default class VM {
 		this.cpuWorker= new MyWorker();
 		// this.worker= new Worker(new URL('./cpu/controller.mjs', import.meta.url));
 		// this.worker= new Worker('/js/cpu/controller.js');
-		this.cpuWorker.addEventListener('message', (e) => this.handleMessage(e.data), false);
+		this.cpuWorker.addEventListener('message', (e) => this.handleMessage(e), false);
 
 		this.memory= new SharedArrayBuffer(machine.memory.size);
 
@@ -172,8 +172,11 @@ export default class VM {
 
 	}
 
-	async handleMessage(msg) {
-		// console.log("handleMessage", msg);
+	async handleMessage(evt) {
+		const msg= evt.data;
+		const sender= evt.ports[0];
+
+		// sender && console.log("VM.handleMessage", msg, sender);
 
 		switch(msg.cmd) {
 			case "clog":
@@ -183,7 +186,7 @@ export default class VM {
 				console.log("### WORKER", msg.data);
 				break;
 			case "video":
-				this.video.handleMessage(msg.data);
+				this.video.handleMessage(sender, msg.data);
 				break;
 			case "sound":
 				this.sound.handleMessage(msg.data);

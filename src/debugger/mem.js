@@ -24,16 +24,16 @@ export default class MemViewer {
 
 	async onMouseClick(e) {
 		let value;
-		if(e.target.className == "value") {
+		if(e.target.className === "value") {
 			const addrStr= e.target.parentElement.id;
 			const parts= addrStr.split(":");
-			const bank= parseInt("0x"+parts[0]);
-			const addr= parseInt("0x"+parts[1]) + Number(e.target.id);
+			const bank= parseInt(`0x${parts[0]}`);
+			const addr= parseInt(`0x${parts[1]}`) + Number(e.target.id);
 
 			// this.dbg.getValueDlg();
 
-			value= parseInt(prompt(utils.hexbyte(bank)+":"+utils.hexword(addr) + ": Hexa Value ?"), 16);
-			if(isNaN(value))
+			value= parseInt(prompt(`${utils.hexbyte(bank)}:${utils.hexword(addr)}: Hexa Value ?`), 16);
+			if(Number.isNaN(value))
 				return;
 
 			// this.memory[bank*0x10000 + addr]= value & 0xFF;
@@ -47,7 +47,7 @@ export default class MemViewer {
 				addr= addr.slice(1);
 			}
 			value= parseInt(addr, 16);
-			if(isNaN(value))
+			if(Number.isNaN(value))
 				return;
 			this.dumpMemAddr= value & 0xFFFF;
 			this.dumpMemBank= value>>16;
@@ -63,17 +63,14 @@ export default class MemViewer {
 			let charsStr= "";
 			for(let column= 0; column<16; column++) {
 				let byte= bytes[line*16 + column];
-				dumpStr+= 	` <span class="value" id="${column}">` +
-								// utils.hexbyte(this.memory[(this.dumpMemBank*0x10000)+addr+column]) +
-								utils.hexbyte( byte ) +
-							"</span>";
+				dumpStr+= 	` <span class="value" id="${column}">${utils.hexbyte( byte )}</span>`;
 				byte&= 0x7F;
 				if(byte<0x20)
 					charsStr+= ".";
 				else
 					charsStr+= String.fromCharCode(byte);
 			}
-			dumpStr+= " | " + charsStr.replace(/</g,"&lt;") + "</div>";
+			dumpStr+= ` | ${charsStr.replace(/</g,"&lt;")}</div>`;
 		}
 		this.UImem.innerHTML= dumpStr;
 	}

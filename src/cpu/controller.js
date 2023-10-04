@@ -51,6 +51,13 @@ let wannaStopOnRTS= false;
 
 self.addEventListener('message', OnMessage , false);
 self.core= core;
+self.halt= () => { core.running= 0; };
+self.unhalt= () => {
+	if(!core.running) {
+		core.running= 1;
+		cycleFunc();
+	}
+}
 
 
 //**********************************
@@ -117,7 +124,7 @@ function* cycle10_6()
 
 			// if (cycleLogActivated) recordCycle();
 			// else
-			if(core.PC == tempBP || breakpoints.includes(core.PC)) {
+			if(core.PC === tempBP || breakpoints.includes(core.PC)) {
 
 				const bpAddr= core.PC;
 
@@ -150,12 +157,12 @@ function* cycle10_6()
 			// 	}});
 			// }
 
-			if(op == 0x20) {
+			if(op === 0x20) {
 				jsrLevel++;
 			}
 
-			if(op == 0x60) {
-				if(wannaStopOnRTS && stopAtjsrLevel == jsrLevel) {
+			if(op === 0x60) {
+				if(wannaStopOnRTS && stopAtjsrLevel === jsrLevel) {
 					wannaStopOnRTS= false;
 					core.running= 0;
 					self.postMessage({cmd:"stopped", PC: core.PC, op:"RTS"});
@@ -430,8 +437,17 @@ async function OnMessage({ports, data:{cmd, id, data}})
 			run();
 			break;
 
+		case 'halt':
 		case 'stop':
 			core.running= 0;
+			recipient?.postMessage({cmd, id, data: core.cycle_count});
+			break;
+
+		case 'unhalt':
+			if(!core.running) {
+				core.running= 1;
+				cycleFunc();
+			}
 			recipient?.postMessage({cmd, id, data: core.cycle_count});
 			break;
 

@@ -1,7 +1,7 @@
-import { HGR_LINES, TEXT_LINES } from "../../ram_map.js";
+import { HGR_LINES } from "../../ram_map.js";
+import { renderLowGraphic } from "./gr.js";
 import { setCharColor, video_control } from "./text-control.js";
-import { renderText40 } from "./text-40.js";
-import { renderText80 } from "./text-80.js";
+import { renderText } from "./text.js";
 
 /*
 
@@ -14,24 +14,7 @@ const MODE= {
 	GR: 1,
 	HGR: 2
 };
-const grColours= [
-	"#000000",
-	"#722640",
-	"#40337f",
-	"#e434fe",
-	"#0e5940",
-	"#808080",
-	"#1b9afe",
-	"#bfb3ff",
-	"#404c00",
-	"#e46501",
-	"#808080",
-	"#f1a6bf",
-	"#1bcb01",
-	"#bfcc80",
-	"#8dd9bf",
-	"#ffffff"
-];
+
 const hgrColours= [
 	// palette 0
 	{
@@ -63,6 +46,9 @@ export default class Video {
 		this.vm= vm;
 		this.mode= MODE.TEXT;
 		this.col80= false;
+		this.altCharset= false;
+		this.maxCol= 40;
+		this.maxLine= 24;
 		this.mixed= false;
 		this.lastGRMode= MODE.GR;
 		// this.cacheText40= this.buildCacheText40();
@@ -71,6 +57,9 @@ export default class Video {
 		this.refreshCount= 0;
 
 		this.mode= this.lastGRMode= MODE.HGR;
+
+		this.id= Math.floor(Math.random()*100_000_000);
+		this.textColours= new Uint8Array(2 * 0x0400);
 
 		this.avgSpeed= 0;
 		this.speeds= [10,10,10,10,10,10,10,10,10,10,10];
@@ -96,8 +85,9 @@ export default class Video {
 		// return 24*22+20; // 548
 	}
 
-	handleMessage(msg) {
-		// console.log("Video.handleMessage", msg);
+	handleMessage(sender, msg) {
+
+		// sender && console.log("Video.handleMessage", msg, sender);
 
 		if(msg.update !== undefined)
 			return this.cacheHGRstate[msg.update]= true;
@@ -106,9 +96,14 @@ export default class Video {
 		switch(msg.mode) {
 			case "col40":
 				this.col80= false;
+				this.maxCol= 40;
 				break;
 			case "col80":
 				this.col80= true;
+				this.maxCol= 80;
+				break;
+			case "altCharset":
+				this.altCharset= msg.value;
 				break;
 			case "gr":
 				this.mode= this.lastGRMode;
@@ -133,7 +128,7 @@ export default class Video {
 				break;
 
 			case "ctrl":
-				video_control(this, msg.addr, msg.value);
+				video_control(this, sender, msg.addr, msg.value);
 				break;
 			case "mem":
 				this.chColor && setCharColor(this, msg.bank, msg.addr, this.chColor);
@@ -180,64 +175,6 @@ export default class Video {
 	// 	return cache;
 	// }
 
-
-	renderText40Mixed(ctx) {
-		let x= 7;
-		let y= 7+22;
-		ctx.fillStyle= "white";
-		ctx.font = '20px "PrintChar21"';
-		for(let line= 20; line<24; line++)
-			for(let column= 0; column<40; column++) {
-				const addr= TEXT_LINES[line]+column;
-				let ascii= this.memory[addr];
-
-				if(ascii == 0xA0)
-					continue;
-
-				if(ascii<=0x1F)
-					ascii+= 0xE140;
-				else
-				if(ascii<=0x3F)
-					ascii+= 0xE100;
-				else
-				if(ascii<=0x5F)
-					ascii+= 0xE100;
-				else
-				if(ascii<=0x7F)
-					ascii+= 0xE100;
-				else
-				if(ascii>=0xA0)
-					ascii-= 0x80;
-				const char= String.fromCharCode(ascii);
-				ctx.fillText(char, x+(15*column), y+(22*line));
-			}
-	}
-
-	renderLowGraphic(ctx) {
-		let x= 5;
-		let y= 10;
-		for(let line= 0; line<(this.mixed ? 40 : 48); line+=2) {
-			for(let column= 0; column<40; column++) {
-				const addr= TEXT_LINES[line/2]+column;
-				let byte= this.memory[addr];
-				ctx.fillStyle= grColours[byte & 0x0F];
-				ctx.fillRect(x+(15*column), y+(11*line), 20, 11);
-				ctx.fillStyle= grColours[byte>>4 & 0x0F];
-				ctx.fillRect(x+(15*column), y+(11*(line+1)), 20, 11);
-			}
-
-			// if((line & 1) == 0) {
-			// 	const addr= TEXT_LINES[line/2];
-			// 	ctx.fillStyle="#FFFFFF";
-			// 	ctx.font = "12pt courier";
-			// 	ctx.fillText(hexWord(addr), 5, y+(11*line)+14);
-			// }
-
-		}
-		if(this.mixed)
-			this.renderText40Mixed(ctx);
-	}
-
 	buildHGRScreenPart(part) {
 
 		let buffer= this.cacheHGR[part];
@@ -250,7 +187,7 @@ export default class Video {
 			// console.log(part, buffer.width, buffer.height);
 		}
 
-		let ctx= buffer.getContext("2d", { alpha: false });
+		const ctx= buffer.getContext("2d", { alpha: false });
 		ctx.imageSmoothingEnabled = false;
 		ctx.msImageSmoothingEnabled = false;
 		// ctx.scale(1, 2);
@@ -272,8 +209,12 @@ export default class Video {
 		const incH= hPixW+0;
 		const y= 0;
 		const stepH= 7 * incH;
-		let x, column, pal;
-		let pixCurrent, pixBefore, pixAfter;
+		let x;
+		let column;
+		let pal;
+		let pixCurrent;
+		let pixBefore;
+		let pixAfter;
 
 		// console.log("renderHGRScreenPart", lineFrom, lineTo);
 
@@ -296,7 +237,7 @@ export default class Video {
 					ctx.fillStyle= pixBefore & 0x2 ? hgrColours[pal].white : col;
 					ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
 
-					if(pixAfter == 0x1||pixAfter==0x3) {
+					if(pixAfter === 0x1||pixAfter===0x3) {
 						ctx.fillStyle= col;
 						ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
 					}
@@ -307,12 +248,12 @@ export default class Video {
 				case 0x02: {
 					let col= hgrColours[pal].col2;
 
-					if(pixBefore == 0x2||pixBefore==0x3) {
+					if(pixBefore === 0x2||pixBefore===0x3) {
 						ctx.fillStyle= col;
 						ctx.fillRect(x, y+line*hPixH, hPixW, hPixH);
 					}
 
-					col= pixAfter==0x3 ? hgrColours[pal].white : hgrColours[pal].col2;
+					col= pixAfter===0x3 ? hgrColours[pal].white : hgrColours[pal].col2;
 
 					ctx.fillStyle= col;
 					ctx.fillRect(x + hPixW, y+line*hPixH, hPixW, hPixH);
@@ -333,7 +274,7 @@ export default class Video {
 
 				x= stepH * column;
 				pal= b1 & 0x80 ? 1 : 0;
-				let pal2= b2 & 0x80 ? 1 : 0;
+				const pal2= b2 & 0x80 ? 1 : 0;
 
 				pixCurrent= b1 & 0x3; // x000 0011
 
@@ -595,11 +536,11 @@ export default class Video {
 
 		switch(this.mode) {
 			case MODE.TEXT: {
-				this.col80 ? renderText80(this, ctx, canvas) : renderText40(this, ctx, canvas);
+				renderText(this, ctx, canvas);
 				break;
 			}
 			case MODE.GR:
-				this.renderLowGraphic(ctx);
+				renderLowGraphic(this, ctx, canvas);
 				break;
 			case MODE.HGR:
 				// this.renderHighGraphic_old(ctx);
