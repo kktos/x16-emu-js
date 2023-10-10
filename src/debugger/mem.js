@@ -22,6 +22,10 @@ export default class MemViewer {
 		this.update();
 	}
 
+	resize(count) {
+		this.lineCount= count;
+	}
+
 	async onMouseClick(e) {
 		let value;
 		if(e.target.className === "value") {

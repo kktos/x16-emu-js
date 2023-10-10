@@ -2,6 +2,8 @@ export function window_init() {
 
 	document.querySelectorAll("[window]").forEach((element) => {
 
+		setupResize(element);
+
 		const panelPos= JSON.parse(localStorage.getItem(`panelPos-${element.id}`));
 		if(panelPos) {
 			element.style.left= panelPos.left;
@@ -51,5 +53,48 @@ export function window_init() {
 			}));
 		}, true);
 	});
+
+}
+
+const ResizeEvent = new Event("resize");
+
+function setupResize(window) {
+
+	let isPanelResizing= false;
+
+	window.addEventListener('mousedown', (e) => {
+
+		if(e.offsetY > window.clientHeight-5) {
+			isPanelResizing= true;
+			window.className= "resizing";
+		}
+	}, true);
+
+	window.addEventListener('mouseup', (e) => {
+		isPanelResizing= false;
+		window.className= "";
+	}, true);
+	window.addEventListener('mouseleave', (e) => {
+		isPanelResizing= false;
+		window.className= "";
+	}, true);
+
+	window.addEventListener('mousemove', (e) => {
+		e.preventDefault();
+		if (isPanelResizing) {
+			const mousePosition= {
+				x : e.clientX,
+				y : e.clientY
+			};
+
+			const deltaX= mousePosition.x -  window.offsetLeft;
+			const deltaY= mousePosition.y - window.offsetTop;
+
+			window.style.width= `${(deltaX)}px`;
+			window.style.height= `${(deltaY)}px`;
+
+			window.dispatchEvent(ResizeEvent);
+		}
+	}, true);
 
 }

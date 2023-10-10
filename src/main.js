@@ -29,6 +29,23 @@ main();
 const src=`
 	.cpu "65c02"
 
+	.macro log fmt, parm1
+		.db $42,$FF
+		.cstr fmt
+		.db 1
+		.dw parm1
+	.end
+
+	MON_CH		= $24
+	BASL		= $28
+	KSWL		= $38
+	KSWH		= $39
+	RNDL		= $4E
+	RNDH		= $4F
+
+	KBD 		= $C000
+	KBDSTROBE	= $C010
+
 	CMD 	= $C0B0
 	VALUE 	= $C0B1
 	ADDRH 	= $C0B2
@@ -38,16 +55,83 @@ const src=`
 	SET_CHAR_COLOR	= $01
 	WRITE_CHAR 		= $02
 	SET_MODE 		= $06
+	SET_CURSOR 		= $07
 	OUTPUT_STRING 	= $25
 
 	.ORG $1000
 
-	sta $C051
+	; sta $C051
+	; sta $C001
+	; sta $C00D
+	; lda #80
+	; sta $21
+
 	; set videoMode = 0
 	lda #SET_MODE
 	sta CMD
 	lda #0
 	sta VALUE
+
+	lda #<key_in
+	sta KSWL
+	lda #>key_in
+	sta KSWH
+	rts
+
+key_in
+
+		lda #SET_CURSOR
+		sta CMD
+		lda #1
+		sta VALUE
+
+		lda #$A0
+		STA   (BASL),Y
+
+KEYIN    INC   RNDL
+         BNE   KEYIN2     ;INCR RND NUMBER
+         INC   RNDH
+KEYIN2   lda   KBD        ;KEY DOWN?
+         BPL   KEYIN      ;  LOOP
+         STA   (BASL),Y
+
+		 log "A=%a",0
+
+		 cmp #$88
+		 bne key_in_exit
+
+		 dec MON_CH
+		 dey
+		 lda #$A0
+		 STA   (BASL),Y
+
+key_in_exit
+		lda #SET_CURSOR
+		sta CMD
+		lda #0
+		sta VALUE
+
+		LDA   KBD        ;GET KEYCODE
+		BIT   KBDSTROBE    ;CLR KEY STROBE
+		RTS
+
+;	lda #SET_CURSOR
+;	sta CMD
+;	lda #1
+;	sta VALUE
+
+waitKey
+	lda KBD
+	bpl waitKey
+
+;	lda #SET_CURSOR
+;	sta CMD
+;	lda #0
+;	sta VALUE
+
+	lda KBD
+	sta KBDSTROBE
+	rts
 
 	; lda #WRITE_CHAR
 	; sta CMD
@@ -107,7 +191,7 @@ print_string
 
 	lda #SET_CHAR_COLOR
 	sta CMD
-	lda #$56
+	lda #$92
 	sta VALUE
 
 	lda #OUTPUT_STRING

@@ -1,6 +1,5 @@
 import { TEXT_LINES } from "../../ram_map.js";
 import { MON_BASH, MON_BASL, MON_CH, MON_CSWH, MON_CSWL, MON_CV, OURCH, OURCV } from "./text-constants.js";
-import { clearScreen40 } from "./text.js";
 
 const BaseAddr= TEXT_LINES[0];
 let videoMode= -1;
@@ -23,6 +22,7 @@ const COMMANDS= {
 	SCROLL_WINDOW: 0x04,
 	OUTPUT_CHAR: 0x05,
 	SET_MODE: 0x06,
+	SET_CURSOR: 0x07,
 	OUTPUT_STRING: 0x25,
 };
 
@@ -72,6 +72,11 @@ function exec(video, sender, cmd, addrH, addrL, value) {
 
 	switch(cmd) {
 
+		case COMMANDS.SET_CURSOR: {
+			video.cursorState= value;
+			break;
+		}
+
 		case COMMANDS.SET_CHAR_COLOR: {
 			video.chColor= value;
 			break;
@@ -93,13 +98,9 @@ function exec(video, sender, cmd, addrH, addrL, value) {
 
 		case COMMANDS.OUTPUT_STRING: {
 			const addr= (addrH<<8) + addrL;
-
-			console.log("OUTPUT_STRING", addr.toString(16), addrH.toString(16), addrL.toString(16), value);
-
 			for(let idx= 0; idx<value; idx++) {
 				const ch= video.memory[(addr+idx)&0xFFFF];
 				outputChar(video, null, ch);
-				console.log(addr.toString(16), idx, ch);
 			}
 			break;
 		}
@@ -125,7 +126,7 @@ function setMode(video, mode) {
 }
 
 function clearWindow(video) {
-	clearScreen40(video);
+	clearScreen(video);
 
 	video.textColours.fill(video.chColor);
 
@@ -143,13 +144,15 @@ function ScrollWindow(video) {
 		const fromAddr= TEXT_LINES[line];
 		const toAddr= TEXT_LINES[line-1];
 		for(let column= 0; column<video.maxCol; column++) {
-			video.memory[toAddr + column]= video.memory[fromAddr + column];
+			const bank= (!video.col80 || column&1) ? 0 : 1;
+			video.memory[(bank * 0x10000) + toAddr + column]= video.memory[(bank * 0x10000) + fromAddr + column];
 			video.textColours[toAddr - BaseAddr + column]= video.textColours[fromAddr - BaseAddr + column];
 		}
 	}
 	const addr= TEXT_LINES[video.maxLine-1];
 	for(let column= 0; column<video.maxCol; column++) {
-		video.memory[addr + column]= 0xA0;
+		const bank= (!video.col80 || column&1) ? 0 : 1;
+		video.memory[(bank * 0x10000) +addr + column]= 0xA0;
 		video.textColours[addr - BaseAddr + column]= video.chColor;
 	}
 }
@@ -163,18 +166,20 @@ function outputChar(video, sender, ch) {
 			break;
 		}
 
-		const line= video.memory[video.col80 ? OURCV : MON_CV];
-		let column= video.memory[video.col80 ? OURCH : MON_CH];
+		// const line= video.memory[video.col80 ? OURCV : MON_CV];
+		// let column= video.memory[video.col80 ? OURCH : MON_CH];
+		const line= video.memory[MON_CV];
+		let column= video.memory[MON_CH];
 
 		const addr= TEXT_LINES[line]+(video.col80 ? column>>1 : column);
-		const bank= !video.col80 || column&1 ? 0 : 1;
+		const bank= (!video.col80 || column&1) ? 0 : 1;
 		video.memory[(bank * 0x10000) + addr]= ch;
 		setCharColor(video, bank, addr, video.chColor);
 
 		column++;
 		if(column < video.maxCol) {
 			video.memory[MON_CH]= column;
-			video.memory[OURCH]= column;
+			// video.memory[OURCH]= column;
 			break;
 		}
 
@@ -186,24 +191,25 @@ function outputChar(video, sender, ch) {
 }
 
 function newLine(video) {
-	const line= video.memory[video.col80 ? OURCH : MON_CV]+1;
+	// const line= video.memory[video.col80 ? OURCH : MON_CV]+1;
+	const line= video.memory[MON_CV]+1;
 
 	if(line >= video.maxLine) {
 		video.memory[MON_CH]= 0;
-		video.memory[OURCH]= 0;
+		// video.memory[OURCH]= 0;
 		ScrollWindow(video);
 		return;
 	}
 
 	video.memory[MON_CV]= line;
-	video.memory[OURCV]= line;
+	// video.memory[OURCV]= line;
 	const addr= TEXT_LINES[line];
 	video.memory[MON_BASL]= addr & 0xFF;
 	video.memory[MON_BASH]= addr >> 8;
 	video.memory[MON_CH]= 0;
-	video.memory[OURCH]= 0;
+	// video.memory[OURCH]= 0;
 
-	// console.log("newLine", video.memory[MON_CH], video.memory[MON_CV], video.memory[MON_BASL].toString(16), video.memory[MON_BASH].toString(16));
+	console.log("newLine", video.memory[OURCH], video.memory[OURCV], video.memory[MON_CH], video.memory[MON_CV], (video.memory[MON_BASH]<<8 | video.memory[MON_BASL]).toString(16));
 }
 
 function ctrlChar(video, ch) {
@@ -216,4 +222,14 @@ function ctrlChar(video, ch) {
 		}
 	}
 
+}
+
+export function clearScreen(video) {
+	for(let line= 0; line<24; line++) {
+		const addr= TEXT_LINES[line];
+		for(let column= 0; column<video.maxCol; column++) {
+			const bank= (!video.col80 || column&1) ? 0 : 1;
+			video.memory[(bank * 0x10000) + addr + (video.col80 ? column>>1 : column)]= 0xA0;
+		}
+	}
 }

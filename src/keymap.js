@@ -15,8 +15,8 @@ export default class KeyMap {
 	set(key, pressed) {
 		this.map.set(key, pressed);
 	}
-	
+
 	isPressed(key) {
-		return this.get(key) == true;
+		return this.get(key) === true;
 	}
 }

@@ -180,15 +180,15 @@ function subOUT() {
 			case "%D": {
 				const len= W*H;
 				const addr= core.bus.read(parms[curParm]) + (0x100*(core.bus.read(parms[curParm]+1)));
-				outStr+= "\n["+hexword(addr)+"."+hexword(addr+len-1)+"]";
-				outStr+= "\n"+hexword(addr)+": ";
+				outStr+= `\n[${hexword(addr)}.${hexword(addr+len-1)}]`;
+				outStr+= `\n${hexword(addr)}: `;
 				let curW= 0;
 				for(let offset= 0; offset<len; offset++) {
-					if(curW == W) {
+					if(curW === W) {
 						curW= 0;
-						outStr+= "\n"+hexword(addr + offset)+": ";
+						outStr+= `\n${hexword(addr + offset)}: `;
 					}
-					outStr+= hexbyte(core.bus.read(addr + offset))+" ";
+					outStr+= `${hexbyte(core.bus.read(addr + offset))} `;
 					curW++;
 				}
 				curParm++;

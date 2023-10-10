@@ -15,7 +15,9 @@ import {window_init} from "./window.js";
 // also, just starting from the back of ROM and going up...
 // const commonInstructions= /(RTS|B..|JMP|JSR|LD[AXY]|ST[AXY]|TA[XY]|T[XY]A|AD[DC]|SUB|SBC|CLC|SEC|CMP|EOR|ORR|AND|INC|DEC).*/;
 // const uncommonInstrucions= /.*,\s*([XY]|X\))$/;
-const DISASM_LINES_COUNT= 40;
+
+let DISASM_LINES_COUNT= 40;
+
 const id= "65x02 Machine Emulator";
 export default class Debugger {
 
@@ -38,10 +40,6 @@ export default class Debugger {
 		};
 
 		window.DBG= this;
-
-		this.isPanelMoving= false;
-		this.isPanelOffset= null;
-		// this.setupUI();
 
 		const refresh= () => {
 			this.mem.update();
@@ -79,8 +77,15 @@ export default class Debugger {
 			p: this.uiroot.querySelector("#registers #P")
 		}
 
+		DISASM_LINES_COUNT= Math.max(Math.floor(this.UIdisasm.clientHeight/10), 40);
 
-		this.mem= new MemViewer(this, this.uiroot.querySelector("#mem"), DISASM_LINES_COUNT);
+		const memoryPanel= this.uiroot.querySelector("#mem");
+		this.mem= new MemViewer(this, memoryPanel, DISASM_LINES_COUNT);
+
+		this.uiroot.addEventListener("resize", (e)=> {
+			DISASM_LINES_COUNT= Math.max(Math.floor(this.UIdisasm.clientHeight/10), 40);
+			this.mem.resize(DISASM_LINES_COUNT);
+		});
 
 		this.UIdisasm.addEventListener("click", (e)=> this.onClickDisasm(e));
 

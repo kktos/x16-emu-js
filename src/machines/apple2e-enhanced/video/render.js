@@ -70,6 +70,8 @@ export default class Video {
 		this.tbColor= 0xF0;
 		// FG/BG colour for any new char
 		this.chColor= 0x00;
+		// cursor state
+		this.cursorState= 0x00;
 	}
 
 	// 620x548 -> ratio 1.13

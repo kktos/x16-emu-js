@@ -894,6 +894,8 @@ export default class Bus {
 				break;
 		}
 
+		// console.log(this.lastKeypressed.toString(16));
+
 		this.keyWasRead= true;
 		return this.lastKeypressed | 0x80;
 	}

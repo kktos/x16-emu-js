@@ -467,7 +467,7 @@ async function OnMessage({ports, data:{cmd, id, data}})
 
 		case "keydown":
 		case "keyup":
-			core.bus.keys.set(data.key, cmd == "keydown");
+			core.bus.keys.set(data.key, cmd === "keydown");
 			break;
 
 		case "disasm": {
