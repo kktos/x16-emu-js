@@ -1,0 +1,15 @@
+BASL = $28
+
+FORMAT = $2E
+LENGTH = $2F
+
+INVFLG = $32
+
+PCL = $3A
+PCH = $3B
+
+A1L = $3C
+A1H = $3D
+
+A2L = $3E
+A2H = $3F

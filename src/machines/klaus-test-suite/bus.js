@@ -5,6 +5,8 @@ export default class Bus {
 		this.ram= new Uint8Array(buffer);
 	}
 
+	reset() {}
+
 	read(addr) {
 		return this.ram[addr & 0xFFFF];
 	}
@@ -16,7 +18,7 @@ export default class Bus {
 	writeHexa(bank, addr, hexString) {
 		const values= hexString.match(/[0-9a-fA-F]+/g);
 		for(let idx= 0; idx<values.length; idx++)
-			this.write(addr++, parseInt(values[idx],16));
+			this.write(addr++, Number.parseInt(values[idx],16));
 		return addr;
 	}
 

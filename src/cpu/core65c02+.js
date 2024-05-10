@@ -128,8 +128,8 @@ function readString(start) {
 }
 
 function subOUT() {
-	let parms= [];
-	let {str: fmt, len}= readString(core.PC);
+	const parms= [];
+	const {str: fmt, len}= readString(core.PC);
 	core.PC+= len;
 	const parmCount= core.bus.read(core.PC++);
 	for(let idx=0; idx<parmCount; idx++) {
@@ -252,7 +252,7 @@ function subMVPw() {
 function subADC(oper)
 {
 	let t1;
-	if (core.FlagD==1)
+	if (core.FlagD===1)
 	{
 		t1= (core.A&0xF)+(oper&0xF)+core.FlagC;
 		if (t1>9) t1+=6;
@@ -266,28 +266,28 @@ function subADC(oper)
 	else if ((core.A>=0x80)&&(oper>=0x80)&&(t1<0x80)) core.FlagV=1;
 	else core.FlagV=0;
 	core.A=t1;
-	if (core.A==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.A===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.A>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subAND(oper)
 {
 	core.A&=oper;
-	if (core.A==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.A===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.A>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subASL(oper)
 {
 	oper<<=1;
 	if (oper>=0x100){core.FlagC=1;oper&=0xFF;}else core.FlagC=0;
-	if (oper==0) core.FlagZ=1;else core.FlagZ=0;
+	if (oper===0) core.FlagZ=1;else core.FlagZ=0;
 	if (oper>=0x80) core.FlagN=1;else core.FlagN=0;
 	core.bus.write(core.calcAddress, oper);
 }
 function subBBR(oper)
 {
-	if ((memZP()&oper)==0)
+	if ((memZP()&oper)===0)
 	{
-		let t0=memIMMED();
+		const t0=memIMMED();
 		if (t0>=0x80) core.PC-=(0x100-t0);
 		else core.PC+=t0;
 	}
@@ -295,9 +295,9 @@ function subBBR(oper)
 }
 function subBBS(oper)
 {
-	if ((memZP()&oper)!=0)
+	if ((memZP()&oper)!==0)
 	{
-		let t0=memIMMED();
+		const t0=memIMMED();
 		if (t0>=0x80) core.PC-=(0x100-t0);
 		else core.PC+=t0;
 	}
@@ -305,14 +305,14 @@ function subBBS(oper)
 }
 function subBIT(oper)
 {
-	if ((core.A&oper)==0) core.FlagZ=1;else core.FlagZ=0;
+	if ((core.A&oper)===0) core.FlagZ=1;else core.FlagZ=0;
 	if (oper&0x80) core.FlagN=1;else core.FlagN=0;
 	if (oper&0x40) core.FlagV=1;else core.FlagV=0;
 }
 function subCMP(oper)
 {
 	let temp=core.A-oper;
-	if (temp==0) core.FlagZ=1;else core.FlagZ=0;
+	if (temp===0) core.FlagZ=1;else core.FlagZ=0;
 	if (temp>=0) core.FlagC=1;else core.FlagC=0;
 	if (temp<0) temp+=0x100;
 	if (temp>=0x80) core.FlagN=1;else core.FlagN=0;
@@ -320,7 +320,7 @@ function subCMP(oper)
 function subCPX(oper)
 {
 	let temp=core.X-oper;
-	if (temp==0) core.FlagZ=1;else core.FlagZ=0;
+	if (temp===0) core.FlagZ=1;else core.FlagZ=0;
 	if (temp>=0) core.FlagC=1;else core.FlagC=0;
 	if (temp<0) temp+=0x100;
 	if (temp>=0x80) core.FlagN=1;else core.FlagN=0;
@@ -328,54 +328,54 @@ function subCPX(oper)
 function subCPY(oper)
 {
 	let temp=core.Y-oper;
-	if (temp==0) core.FlagZ=1;else core.FlagZ=0;
+	if (temp===0) core.FlagZ=1;else core.FlagZ=0;
 	if (temp>=0) core.FlagC=1;else core.FlagC=0;
 	if (temp<0) temp+=0x100;
 	if (temp>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subDEC(oper)
 {
-	if (oper==0) oper=0xFF;
+	if (oper===0) oper=0xFF;
 	else oper--;
-	if (oper==0) core.FlagZ=1;else core.FlagZ=0;
+	if (oper===0) core.FlagZ=1;else core.FlagZ=0;
 	if (oper>=0x80) core.FlagN=1;else core.FlagN=0;
 	core.bus.write(core.calcAddress, oper);
 }
 function subEOR(oper)
 {
 	core.A^=oper;
-	if (core.A==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.A===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.A>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subINC(oper)
 {
-	if (oper==0xFF){oper=0;core.FlagZ=1;} else{oper++;core.FlagZ=0;}
+	if (oper===0xFF){oper=0;core.FlagZ=1;} else{oper++;core.FlagZ=0;}
 	if (oper>=0x80) core.FlagN=1;else core.FlagN=0;
 	core.bus.write(core.calcAddress, oper);
 }
 function subLDA(oper)
 {
 	core.A= oper;
-	if (core.A==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.A===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.A>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subLDX(oper)
 {
 	core.X= oper;
-	if (core.X==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.X===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.X>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subLDY(oper)
 {
 	core.Y= oper;
-	if (core.Y==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.Y===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.Y>=0x80) core.FlagN=1;else core.FlagN=0;
 }
 function subLSR(oper)
 {
 	if (oper&1) {core.FlagC=1;}else core.FlagC=0;
 	oper>>=1;
-	if (oper==0) core.FlagZ=1;else core.FlagZ=0;
+	if (oper===0) core.FlagZ=1;else core.FlagZ=0;
 	//if (oper>=0x80) core.FlagN=1;else core.FlagN=0;
 	core.FlagN=0;
 	core.bus.write(core.calcAddress, oper);
@@ -383,7 +383,7 @@ function subLSR(oper)
 function subORA(oper)
 {
 	core.A|=oper;
-	if (core.A==0) core.FlagZ=1;else core.FlagZ=0;
+	if (core.A===0) core.FlagZ=1;else core.FlagZ=0;
 	if (core.A>=0x80) core.FlagN=1;else core.FlagN=0;
 	//debugflag+="\nFlagN: "+core.FlagN;
 }
@@ -397,7 +397,7 @@ function subROL(oper)
 {
 	oper=(oper<<1)+core.FlagC;
 	if (oper>=0x100){core.FlagC=1;oper&=0xFF;}else core.FlagC=0;
-	if (oper==0) core.FlagZ=1;else core.FlagZ=0;
+	if (oper===0) core.FlagZ=1;else core.FlagZ=0;
 	if (oper>=0x80) core.FlagN=1;else core.FlagN=0;
 	core.bus.write(core.calcAddress, oper);
 }
@@ -408,7 +408,7 @@ function subROR(oper)
 	oper>>=1;
 	if (core.FlagC) oper|=0x80;
 	core.FlagC=t0;
-	if (oper==0) core.FlagZ=1;else core.FlagZ=0;
+	if (oper===0) core.FlagZ=1;else core.FlagZ=0;
 	if (oper>=0x80) core.FlagN=1;else core.FlagN=0;
 	core.bus.write(core.calcAddress, oper);
 }

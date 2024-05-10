@@ -18,6 +18,8 @@ export default class VM {
 		this.canvas= canvas;
 		this.isRunning= true;
 
+		console.log("machine:", machine.name, machine);
+
 		// this.diskImages= [];
 
 		this.gc= {
@@ -56,7 +58,8 @@ export default class VM {
 
 		this.sound= new machine.Sound(this.memory, this);
 
-		this.disk= new machine.Disk(this);
+		if(machine.Disk)
+			this.disk= new machine.Disk(this);
 
 		this.canvas.width= this.video.width;
 		this.canvas.height= this.video.height;

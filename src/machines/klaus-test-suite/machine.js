@@ -1,5 +1,7 @@
-import Video from "./video";
 import RAM from "./65C02_extended_opcodes_test";
+import Disc from "./disc";
+import Sound from "./sound";
+import Video from "./video";
 
 const machine= {
 
@@ -26,7 +28,9 @@ const machine= {
 	},
 
 	busSrcFile: "klaus-test-suite/bus.js",
-	Video
+	Video,
+	Sound,
+	Disc
 };
 
 export default machine;

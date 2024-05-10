@@ -1,8 +1,8 @@
-import machine from "./machines/apple2e-enhanced/machine.js";
+// import machine from "./machines/apple2e-enhanced/machine.js";
 import {hexbyte} from "./utils.js";
 import VM from "./vm.js";
 
-// import machine from "./machines/klaus-test-suite/machine.js";
+import machine from "./machines/klaus-test-suite/machine.js";
 // import machine from "./machines/apple2-plus/machine.js";
 
 async function main() {
@@ -94,8 +94,41 @@ KEYIN    INC   RNDL
 KEYIN2   lda   KBD        ;KEY DOWN?
          BPL   KEYIN      ;  LOOP
          STA   (BASL),Y
+		 sta $200,x
 
-		 log "A=%a",0
+		 inc MON_CH
+		 iny
+		 lda #"i+$80
+         STA   (BASL),Y
+		 inx
+		 sta $200,x
+
+		 inc MON_CH
+		 iny
+		 lda #"s+$80
+         STA   (BASL),Y
+		 inx
+		 sta $200,x
+
+		 inc MON_CH
+		 iny
+		 lda #"t+$80
+		 STA   (BASL),Y
+		 inx
+		 sta $200,x
+
+		 inc MON_CH
+		 iny
+		 lda #$A0
+		 STA   (BASL),Y
+		 inx
+		 sta $200,x
+
+		 iny
+		 inx
+
+
+		 log "A=%a X=%x Y=%y",0
 
 		 cmp #$88
 		 bne key_in_exit
@@ -111,7 +144,8 @@ key_in_exit
 		lda #0
 		sta VALUE
 
-		LDA   KBD        ;GET KEYCODE
+		lda #$8D
+		;LDA   KBD        ;GET KEYCODE
 		BIT   KBDSTROBE    ;CLR KEY STROBE
 		RTS
 

@@ -336,7 +336,7 @@ export default class Debugger {
 			let score= 0;
 			let addr= startingPoint & 0xffff;
 			while (addr < address) {
-				let result= await this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
+				const result= await this.disassembler.disassemble(this.mem.dumpMemBank, addr, cpuState);
 				if (result[0] === cpuState.PC) score += 10; // huge boost if this instruction was executed
 				if (result[0].match(commonInstructions) && !result[0].match(uncommonInstrucions)) {
 					score++;
@@ -354,6 +354,7 @@ export default class Debugger {
 		return bestAddr;
 	}
 
+	// TODO : test syntax.js -> https://github.com/williamtroup/Syntax.js/tree/main
 	async updateDisasm(cpuState) {
 		const buildLine= ({lineID, addr, disasm, comment, selected}) => {
 			const bank= utils.hexbyte(this.mem.dumpMemBank);

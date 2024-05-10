@@ -1,0 +1,2195 @@
+                   ********************************************************************************
+                   * Apple //e Video Firmware                                                     *
+                   *                                                                              *
+                   * Rick Auricchio 08/81                                                         *
+                   *                                                                              *
+                   * (C) 1981, Apple Computer Inc.  All Rights Reserved                           *
+                   ********************************************************************************
+                   * This is a disassembly of the 80-column firmware in the original              *
+                   * ("unenhanced") Apple //e monitor ROM.  The labels and comments come from the *
+                   * "80-Column Firmware Listing" in _Reference Manual Addendum: Monitor ROM      *
+                   * Listings For //e Only_.  This is a fairly direct translation -- operands are *
+                   * generally formatted as they appear in the original listing.  Comments have   *
+                   * been converted to mixed-case, but are otherwise unchanged (typographical     *
+                   * errors and all).                                                             *
+                   ********************************************************************************
+                   * Project created by Andy McFadden, using 6502bench SourceGen v1.7.4.          *
+                   * Last updated 2021/06/10                                                      *
+                   ********************************************************************************
+                   *                                                                              *
+                   * Notes on $047b - $07fb ...                                                   *
+                   *                                                                              *
+                   * Permanent data in screenholes                                                *
+                   *                                                                              *
+                   * NOTE: these reside in page 1 of the 80-column screen pair; any routine which *
+                   * sets page2 *must* restore back to page1 so that we can correctly access      *
+                   * these perms.  Under *NO* circumstances is any routine to be called while we  *
+                   * have page2 banked in!                                                        *
+                   *                                                                              *
+                   * Values for MODE:                                                             *
+                   *  0....... - ESC-R inactive                                                   *
+                   *  1....... - ESC-R active                                                     *
+                   *  .0...... - BASIC print                                                      *
+                   *  .1...... - BASIC input                                                      *
+                   *  ..0..... - language=BASIC                                                   *
+                   *  ..1..... - language=Pascal                                                  *
+                   *  ...0.... - U/C restrict mode                                                *
+                   *  ...1.... - literal UC/LC mode                                               *
+                   *  ....0... - GOTOXY N/A                                                       *
+                   *  ....1... - GOTOXY in progress                                               *
+                   *  .....0.. - normal video (Pascal)                                            *
+                   *  .....1.. - inverse video (Pascal)                                           *
+                   *  ......0. - Pascal 1.1 F/W active                                            *
+                   *  ......1. - Pascal 1.0 interface                                             *
+                   *  .......0 - caller SEI'd (BASIC)                                             *
+                   *  .......1 - caller CLI'd (BASIC)                                             *
+                   *  .......0 - normal mode (Pascal)                                             *
+                   *  .......1 - transparent mode (Pascal)                                        *
+                   ********************************************************************************
+                   M_IRQ           .eq     $01    {const}    ;IRQ enabled (BASIC only)
+                   M_TRANS         .eq     $01    {const}    ;transparent mode if F/W protocol
+                   M_PAS1_0        .eq     $02    {const}    ;Pascal 1.0 mode
+                   M_VMODE         .eq     $04    {const}    ;Pascal video mode
+                   GOODF8          .eq     $06    {const}    ;ROM signature byte
+                   M_GOXY          .eq     $08    {const}    ;GOTOXY in progress
+                   M_LIT           .eq     $10    {const}    ;literal UC/LC input
+                   ESCNUM          .eq     $11    {const}    ;table size, from $C983
+                   M_PASCAL        .eq     $20    {const}    ;Pascal running
+                   M_BINPUT        .eq     $40    {const}    ;BASIC inputting
+                   M_ESCR          .eq     $80    {const}    ;ESC-R active
+                   CN00            .eq     $c300  {const}    ;slot address
+                   YSAV1           .eq     $1f               ;safe place in all environs
+                   MON_WNDLEFT     .eq     $20               ;left column of scroll window
+                   MON_WNDWDTH     .eq     $21               ;width of scroll window
+                   MON_WNDTOP      .eq     $22               ;top of scroll window
+                   MON_WNDBTM      .eq     $23               ;bottom of scroll window
+                   MON_CH          .eq     $24               ;cursor horizontal displacement
+                   MON_CV          .eq     $25               ;cursor vertical displacement
+                   MON_BASL        .eq     $28               ;base address for text output (lo)
+                   MON_BASH        .eq     $29               ;base address for text output (hi)
+                   BAS2L           .eq     $2a               ;base addr for scroll
+                   BAS2H           .eq     $2b
+                   MON_INVFLAG     .eq     $32               ;text mask (255=normal, 127=flash, 63=inv)
+                   MON_CSWL        .eq     $36               ;character output hook (lo)
+                   MON_CSWH        .eq     $37               ;character output hook (hi)
+                   MON_KSWL        .eq     $38               ;character input hook (lo)
+                   MON_KSWH        .eq     $39               ;character input hook (hi)
+                   MON_A1L         .eq     $3c               ;general purpose
+                   MON_A1H         .eq     $3d               ;general purpose
+                   MON_A2L         .eq     $3e               ;general purpose
+                   MON_A2H         .eq     $3f               ;general purpose
+                   MON_A4L         .eq     $42               ;general purpose
+                   MON_A4H         .eq     $43               ;general purpose
+                   MON_RNDL        .eq     $4e               ;low byte of KEYIN "random" value
+                   MON_RNDH        .eq     $4f               ;high byte of KEYIN "random" value
+                   TEMP1           .eq     $0478             ;A temp
+                   OLDCH           .eq     $047b             ;old CH set for user
+                   MODE            .eq     $04fb  {addr/1}   ;operating mode
+                   OURCH           .eq     $057b             ;80-col CH
+                   OURCV           .eq     $05fb             ;cursor vertical
+                   CHAR            .eq     $067b  {addr/1}   ;in/out char
+                   XCOORD          .eq     $06fb             ;X-coord (GOTOXY)
+                   OLDBASL         .eq     $077b             ;Pascal saved BASL
+                   ACTV_PERIP_SLOT .eq     $07f8             ;slot num ($Cn) of active peripheral card
+                   OLDBASH         .eq     $07fb             ;Pascal saved BASH
+                   CLR80COL        .eq     $c000             ;W use $C002-C005 for aux mem (80STOREOFF)
+                   KBD             .eq     $c000             ;R last key pressed + 128
+                   SET80COL        .eq     $c001             ;W use PAGE2 for aux mem (80STOREON)
+                   RDMAINRAM       .eq     $c002             ;W if 80STORE off: read main mem $0200-BFFF
+                   RDCARDRAM       .eq     $c003             ;W if 80STORE off: read aux mem $0200-BFFF
+                   WRMAINRAM       .eq     $c004             ;W if 80STORE off: write main mem $0200-BFFF
+                   WRCARDRAM       .eq     $c005             ;W if 80STORE off: write aux mem $0200-BFFF
+                   SETSTDZP        .eq     $c008             ;W use main stack and zero page
+                   SETALTZP        .eq     $c009             ;W use aux stack and zero page
+                   SETSLOTC3ROM    .eq     $c00b             ;W use external slot 3 ROM
+                   CLR80VID        .eq     $c00c             ;W disable 80-column display mode
+                   SET80VID        .eq     $c00d             ;W enable 80-column display mode
+                   CLRALTCHAR      .eq     $c00e             ;W use primary char set
+                   SETALTCHAR      .eq     $c00f             ;W use alternate char set
+                   KBDSTRB         .eq     $c010             ;RW keyboard strobe
+                   RDLCBNK2        .eq     $c011             ;R bit 7: reading from LC bank 2 ($Dx)?
+                   RDLCRAM         .eq     $c012             ;R bit 7: reading from LC RAM?
+                   RDRAMRD         .eq     $c013             ;R bit 7: reading from aux/alt 48K?
+                   RDRAMWRT        .eq     $c014             ;R bit 7: writing to aux/alt 48K?
+                   RD80COL         .eq     $c018             ;R bit 7: 80STORE is on?
+                   RDTEXT          .eq     $c01a             ;R bit 7: using text mode?
+                   RDPAGE2         .eq     $c01c             ;R bit 7: using page 2?
+                   RD80VID         .eq     $c01f             ;R bit 7: using 80 columns?
+                   SPKR            .eq     $c030             ;RW toggle speaker
+                   TXTPAGE1        .eq     $c054             ;RW display page 1
+                   TXTPAGE2        .eq     $c055             ;RW display page 2 (or read/write aux mem)
+                   CLRAN2          .eq     $c05d             ;RW annunciator 2 on
+                   CLRAN3          .eq     $c05f             ;RW annunciator 3 on
+                   BUTN0           .eq     $c061             ;R switch input 0 / open-apple
+                   BUTN1           .eq     $c062             ;R switch input 1 / closed-apple
+                   LCBANK2_RW      .eq     $c080             ;RW read RAM bank 2, write off
+                   ROMIN           .eq     $c081             ;RWx2 read ROM, write RAM bank 2
+                   LCBANK1_RW      .eq     $c088             ;RW read RAM bank 1, write off
+                   ROMIN1          .eq     $c089             ;RW read ROM, write RAM bank 1
+                   CLRROM          .eq     $cfff             ;disable slot C8 ROM
+                   MON_VERSION     .eq     $fbb3
+                   MON_VTAB        .eq     $fc22             ;tab to row specified in Acc
+                   MON_VTABZ       .eq     $fc24
+                   MON_SNIFFIRQ    .eq     $fc75
+                   MON_FUNCEXIT    .eq     $fd29  {addr/4}
+                   MON_SETKBD      .eq     $fe89             ;reset char input handler to ROM
+                   MON_SETVID      .eq     $fe93             ;reset char output handler to ROM
+                   MON_IORTS       .eq     $ff58             ;JSR here to find out where one is
+
+                                   .org    $c100
+                   ********************************************************************************
+                   * Basic function hook.                                                         *
+                   *                                                                              *
+                   * This routine is called by the patched F8 ROM.  This code will always perform *
+                   * the function here and return to the caller.                                  *
+                   *                                                                              *
+                   * Note: F8 ROM disables I/O to get us running here.  We return to F8 space.    *
+                   *                                                                              *
+                   * Input: Y=function as follows:                                                *
+                   *   0=CLREOP                                                                   *
+                   *   1=HOME                                                                     *
+                   *   2=SCROLL                                                                   *
+                   *   3=CLREOL                                                                   *
+                   *   4=CLEOLZ                                                                   *
+                   *   5=init & reset                                                             *
+                   *   6=KEYIN                                                                    *
+                   *   7-fix escape char                                                          *
+                   *   8=SETWND                                                                   *
+                   *                                                                              *
+                   * Stk has PHP for status of bank & IRQ bit                                     *
+                   *                                                                              *
+                   * Volatile: AC, Y                                                              *
+                   ********************************************************************************
+                   * NOTE: if we have a card installed, then use the video routines, since we     *
+                   * 'own' slot3 screenholes.  If not, duplicate F8ROM routines and avoid slot3   *
+                   * interference.                                                                *
+                   ********************************************************************************
+                   * Vector to KEYIN/ESCFIX immediately to avoid AC destruction.                  *
+                   ********************************************************************************
+c100: c0 06        B_FUNC          cpy     #6                ;is it KEYIN?
+c102: d0 03                        bne     B_FUNCNK          ;no
+c104: 4c 88 c2                     jmp     B_KEYIN
+
+c107: c0 07        B_FUNCNK        cpy     #7                ;is it escape-fix?
+c109: d0 03                        bne     B_FUNCNE          ;no
+c10b: 4c 6e c2                     jmp     B_ESCFIX          ;=>yes!
+
+c10e: 98           B_FUNCNE        tya                       ;save Y
+c10f: 48                           pha
+c110: 20 24 cb                     jsr     TESTCARD          ;do we have a card?
+c113: d0 0a                        bne     B_OLDFUNC         ;=>no
+                   ;
+                   ; Note: this test could turn out wrong on power-up, since the modebyte is
+                   ; undefined.  However, since the monitor is doing a simple 'SETWND' call, we
+                   ; won't get into trouble even if we make the wrong decision.
+                   ;
+c115: ad fb 04                     lda     MODE              ;is mode valid?
+c118: 29 28                        and     #$28              ;for BASIC [AND #M.PASCAL+M.GOXY]
+c11a: d0 03                        bne     B_OLDFUNC         ;=>definitely not!
+c11c: 4c a4 c1                     jmp     B_FUNC0           ;->yes, go new way
+
+                   ;
+                   ; No card.  Do things the old way.
+                   ;
+c11f: 68           B_OLDFUNC       pla
+c120: a8                           tay                       ;restore Y
+c121: a9 c1                        lda     #>B_FUNC          ;transfer via
+c123: 48                           pha                       ; the RTS-trick
+c124: b9 ea cf                     lda     F_TABLE,y         ;get lo address
+c127: 48                           pha
+c128: 60                           rts                       ;transfer to routine
+
+                   ; --------------------------------------------------
+c129: a4 24        F_CLREOP        ldy     MON_CH            ;ESC F is clr to end of page
+c12b: a5 25                        lda     MON_CV
+c12d: 48           CLEOP1          pha
+c12e: 20 24 fc                     jsr     MON_VTABZ
+c131: 20 f4 c2                     jsr     X_CLEOLZ
+c134: a0 00                        ldy     #$00
+c136: 68                           pla
+c137: 69 00                        adc     #$00
+c139: c5 23                        cmp     MON_WNDBTM
+c13b: 90 f0                        bcc     CLEOP1
+c13d: 20 22 fc                     jsr     MON_VTAB
+c140: 4c eb c2                     jmp     F_RETURN          ;done
+
+                   ; --------------------------------------------------
+c143: a5 22        F_HOME          lda     MON_WNDTOP
+c145: 85 25                        sta     MON_CV
+c147: a0 00                        ldy     #$00
+c149: 84 24                        sty     MON_CH
+c14b: f0 e0                        beq     CLEOP1            ;(always taken)
+
+                   ; --------------------------------------------------
+c14d: a5 22        F_SCROLL        lda     MON_WNDTOP
+c14f: 48                           pha
+c150: 20 24 fc                     jsr     MON_VTABZ
+c153: a5 28        SCRL1           lda     MON_BASL
+c155: 85 2a                        sta     BAS2L
+c157: a5 29                        lda     MON_BASH
+c159: 85 2b                        sta     BAS2H
+c15b: a4 21                        ldy     MON_WNDWDTH
+c15d: 88                           dey
+c15e: 68                           pla
+c15f: 69 01                        adc     #$01
+c161: c5 23                        cmp     MON_WNDBTM
+c163: b0 0d                        bcs     SCRL3
+c165: 48                           pha
+c166: 20 24 fc                     jsr     MON_VTABZ
+c169: b1 28        SCRL2           lda     (MON_BASL),y
+c16b: 91 2a                        sta     (BAS2L),y
+c16d: 88                           dey
+c16e: 10 f9                        bpl     SCRL2
+c170: 30 e1                        bmi     SCRL1
+
+c172: a0 00        SCRL3           ldy     #$00
+c174: 20 f4 c2                     jsr     X_CLEOLZ
+c177: 20 22 fc                     jsr     MON_VTAB
+c17a: 4c eb c2                     jmp     F_RETURN          ;=>done
+
+c17d: a4 24        F_CLREOL        ldy     MON_CH
+c17f: a9 a0                        lda     #$a0
+c181: 91 28        CLEOL2          sta     (MON_BASL),y
+c183: c8                           iny
+c184: c4 21                        cpy     MON_WNDWDTH
+c186: 90 f9                        bcc     CLEOL2
+c188: b0 17                        bcs     F_GORET           ;done (always taken)
+
+                   ; --------------------------------------------------
+c18a: a9 28        F_SETWND        lda     #40
+c18c: 85 21                        sta     MON_WNDWDTH
+c18e: a9 18                        lda     #24
+c190: 85 23                        sta     MON_WNDBTM
+c192: a9 17                        lda     #23
+c194: 85 25                        sta     MON_CV
+c196: 20 22 fc                     jsr     MON_VTAB
+c199: 4c eb c2                     jmp     F_RETURN
+
+                   ; --------------------------------------------------
+c19c: a4 1f        F_CLEOLZ        ldy     YSAV1             ;restore horiz position
+c19e: 20 f4 c2                     jsr     X_CLEOLZ          ;do it
+c1a1: 4c eb c2     F_GORET         jmp     F_RETURN          ;done
+
+c1a4: 68           B_FUNC0         pla                       ;restore Y
+c1a5: a8                           tay
+                   ;
+                   ; Set IRQMODE
+                   ;
+c1a6: ad fb 04                     lda     MODE              ;assume IRQ is disabled
+c1a9: 29 fe                        and     #$fe              ;[AND #255-M.IRQ]
+c1ab: 8d fb 04                     sta     MODE
+c1ae: 68                           pla                       ;pull CXBANK status
+c1af: 8d 78 04                     sta     TEMP1             ; off stack
+c1b2: 68                           pla                       ;get user's pstatus
+c1b3: 48                           pha                       ; (leave alone on stack)
+c1b4: 4a                           lsr     A                 ;move 'I' bit to
+c1b5: 4a                           lsr     A                 ; the carry
+c1b6: 4a                           lsr     A
+c1b7: ad 78 04                     lda     TEMP1             ;put CXBANK status
+c1ba: 48                           pha                       ; back on stack
+c1bb: b0 08                        bcs     NOI               ;=>he's inhibited
+c1bd: ad fb 04                     lda     MODE
+c1c0: 09 01                        ora     #M_IRQ
+c1c2: 8d fb 04                     sta     MODE
+c1c5: a5 25        NOI             lda     MON_CV            ;copy user CV
+c1c7: 8d fb 05                     sta     OURCV             ; to ours
+c1ca: 4c ff c1                     jmp     B_VECTOR          ;continue
+
+                   ;
+                   ; Note: this keeps B_XXXX routines all in the C100 page...
+                   ;
+c1cd: 20 a4 cc     B_SCROLL        jsr     SCROLLUP          ;do it for caller
+c1d0: 4c eb c2                     jmp     F_RETURN          ; and return directly
+
+c1d3: 20 48 cd     B_CLREOL        jsr     X_GS              ;clear to EOL
+c1d6: 4c eb c2                     jmp     F_RETURN          ;return directly to caller
+
+                   ; --------------------------------------------------
+c1d9: a4 1f        B_CLEOLZ        ldy     YSAV1             ;restore horiz position
+c1db: 20 4e cd                     jsr     X_GSEOLZ          ;do it to EOL
+c1de: 4c eb c2                     jmp     F_RETURN
+
+                   ; --------------------------------------------------
+c1e1: 20 23 cd     B_CLREOP        jsr     X_VT              ;clear to EOB
+c1e4: 4c eb c2                     jmp     F_RETURN          ;return directly to caller
+
+                   ; --------------------------------------------------
+c1e7: 4c 19 c2     B_SETWND        jmp     B_SETWNDX
+
+c1ea: 4c 34 c2     B_RESET         jmp     B_RESETX          ;must be in BFUNC page
+
+                   ; --------------------------------------------------
+c1ed: 20 42 cd     B_HOME          jsr     X_FF              ;home & clear
+c1f0: ad 7b 05                     lda     OURCH
+c1f3: 85 24                        sta     MON_CH            ;copy CH/CV for caller
+c1f5: 8d 7b 04                     sta     OLDCH             ;remember what we set
+c1f8: ad fb 05                     lda     OURCV
+c1fb: 85 25                        sta     MON_CV
+c1fd: 10 2f                        bpl     GOBACK            ;(always taken)
+                   ;
+                   ; Copy user's cursor if it differs from ours (and we're running in 80-column
+                   ; mode).  If we are not in 80-mode, then always use the user's CH value since
+                   ; ours is probably invalid.
+                   ;
+c1ff: 20 51 cb     B_VECTOR        jsr     BASCALC
+c202: a5 24                        lda     MON_CH            ;get user CH value
+c204: 2c 1f c0                     bit     RD80VID           ;displaying 80-cols?
+c207: 10 05                        bpl     B_GETCH           ;=>no, user CH is it
+c209: cd 7b 04                     cmp     OLDCH             ;is it different?
+c20c: f0 03                        beq     B_FUNC1           ;=>no, use ours
+c20e: 8d 7b 05     B_GETCH         sta     OURCH             ;use his CH
+c211: a9 c1        B_FUNC1         lda     #>B_FUNC          ;transfer to routine
+c213: 48                           pha                       ; via RTS-trick
+c214: b9 f3 cf                     lda     B_TABLE,y         ;get lo address
+c217: 48                           pha
+c218: 60                           rts
+
+                   ; --------------------------------------------------
+c219: a9 50        B_SETWNDX       lda     #80               ;assume 80-cols
+c21b: 2c 1f c0                     bit     RD80VID           ;which mode?
+c21e: 30 01                        bmi     B_SETWND2         ;=>it's 80
+c220: 4a                           lsr     A                 ;make it 40
+c221: 85 21        B_SETWND2       sta     MON_WNDWDTH
+c223: a9 18                        lda     #24               ;set bottom
+c225: 85 23                        sta     MON_WNDBTM
+c227: a9 17                        lda     #23               ;vtab to bottom
+c229: 8d fb 05                     sta     OURCV
+c22c: 85 25                        sta     MON_CV
+c22e: 20 51 cb     GOBACK          jsr     BASCALC
+c231: 4c eb c2                     jmp     F_RETURN
+
+                   ;
+                   ; Handle reset for monitor.
+                   ;
+c234: a9 ff        B_RESETX        lda     #$ff              ;destroy mode byte
+c236: 8d fb 04                     sta     MODE
+c239: ad 5d c0                     lda     CLRAN2            ;setup
+c23c: ad 5f c0                     lda     CLRAN3            ; annunciators
+                   ;
+                   ; If the Open Apple key (always paddle buttons 0) is depressed, coldstart the
+                   ; system after destroying memory.
+                   ;
+c23f: ad 62 c0                     lda     BUTN1             ;get button 1 (solid)
+c242: 30 1d                        bmi     DIAGS             ;=>down, do diags
+c244: ad 61 c0                     lda     BUTN0             ;get button 0 (open)
+c247: 10 1b                        bpl     RESETRET          ;=>not jive or diags
+                   ;
+                   ; Blast 2 bytes of each page, including the reset vector.
+                   ;
+c249: a0 b0                        ldy     #$b0              ;let it precess down
+c24b: a9 00                        lda     #$00
+c24d: 85 3c                        sta     MON_A1L
+c24f: a9 bf                        lda     #$bf              ;start from BFxx down
+c251: 38                           sec                       ;for subtract
+c252: 85 3d        BLAST           sta     MON_A1H
+c254: 91 3c                        sta     (MON_A1L),y
+c256: 88                           dey
+c257: 91 3c                        sta     (MON_A1L),y
+c259: e9 01                        sbc     #1                ;back down to next page
+c25b: c9 01                        cmp     #1                ;stay away from stack!
+c25d: d0 f3                        bne     BLAST
+c25f: f0 03                        beq     RESETRET          ;(always)
+
+c261: 4c 01 c4     DIAGS           jmp     $c401             ;run diags
+
+c264: 20 24 cb     RESETRET        jsr     TESTCARD          ;card plugged in?
+c267: f0 14                        beq     GORETN            ;=>yes
+c269: 8d 0b c0                     sta     SETSLOTC3ROM      ;no, disable ROM
+c26c: d0 0f                        bne     GORETN            ;(always taken)
+
+                   ; --------------------------------------------------
+c26e: 29 df        B_ESCFIX        and     #$df              ;force to uppercase
+c270: a0 03                        ldy     #3                ;scan for a match
+c272: d9 80 c2     ESCFIX2         cmp     ESCIN,y           ;is it?
+c275: d0 03                        bne     ESCFIX3           ;=>naw
+c277: b9 84 c2                     lda     ESCOUT,y          ;yes, translate it
+c27a: 88           ESCFIX3         dey
+c27b: 10 f5                        bpl     ESCFIX2
+c27d: 4c eb c2     GORETN          jmp     F_RETURN          ;return:char in AC
+
+c280: 88 95 8a 8b  ESCIN           .bulk   $88,$95,$8a,$8b
+c284: ca cb cd c9  ESCOUT          .str    “JKMI”            ;the arrows
+
+                   ; --------------------------------------------------
+c288: 8d 78 04     B_KEYIN         sta     TEMP1             ;save original char
+c28b: 68                           pla                       ;hold onto
+c28c: a8                           tay                       ; CXBANK status
+c28d: 68                           pla                       ;get user's
+c28e: 48                           pha                       ; IRQ state
+c28f: 6a                           ror     A                 ;move IRQ bit to
+c290: 6a                           ror     A                 ; the
+c291: 6a                           ror     A                 ;  carry
+c292: 98                           tya                       ;put CXBANK status
+c293: 48                           pha                       ; back on stack
+c294: 8a                           txa                       ;save
+c295: 48                           pha                       ; X reg
+                   ;
+c296: b8                           clv                       ;assume not interruptible
+c297: b0 03                        bcs     B_KEYIN2          ;=>we were right
+c299: 2c 00 cf                     bit     SEV               ;say "interruptible"
+c29c: a9 ff        B_KEYIN2        lda     #$ff              ;cursor=normal delete
+c29e: a4 24                        ldy     MON_CH
+c2a0: 91 28                        sta     (MON_BASL),y
+c2a2: 20 c6 c2                     jsr     KEYDLY            ;wait for a key
+c2a5: b0 0e                        bcs     GOTKEY            ;=>got one
+c2a7: ad 78 04                     lda     TEMP1             ;replace orig char
+c2aa: a4 24                        ldy     MON_CH
+c2ac: 91 28                        sta     (MON_BASL),y
+c2ae: 20 c6 c2                     jsr     KEYDLY            ;wait for a key
+c2b1: b0 02                        bcs     GOTKEY            ;=>got one
+c2b3: 90 e7                        bcc     B_KEYIN2          ;(always taken)
+
+c2b5: ad 78 04     GOTKEY          lda     TEMP1             ;restore original
+c2b8: a4 24                        ldy     MON_CH
+c2ba: 91 28                        sta     (MON_BASL),y      ; character
+c2bc: 68                           pla                       ;restore
+c2bd: aa                           tax                       ; X reg
+c2be: ad 00 c0                     lda     KBD               ;get the new keystroke
+c2c1: 8d 10 c0                     sta     KBDSTRB           ;cancel the strobe
+c2c4: 30 25                        bmi     F_RETURN          ;(always taken)
+
+                   ;
+                   ; Input: V-flag set if interruptible
+                   ;
+c2c6: a2 0c        KEYDLY          ldx     #$0c              ;short delay for IRQ
+c2c8: 70 02                        bvs     IK1               ;->interruptible
+c2ca: a2 31                        ldx     #$31              ;long delay for no IRQ
+c2cc: a0 00        IK1             ldy     #0
+c2ce: 50 05        IK2             bvc     IK2A              ;=>not interruptible
+c2d0: 08                           php                       ;save oflow
+c2d1: 20 75 fc                     jsr     MON_SNIFFIRQ      ;allow IRQ
+c2d4: 28                           plp                       ;restore oflow
+c2d5: e6 4e        IK2A            inc     MON_RNDL
+c2d7: d0 02                        bne     IK3
+c2d9: e6 4f                        inc     MON_RNDH
+c2db: ad 00 c0     IK3             lda     KBD               ;keypress?
+c2de: 30 09                        bmi     KDRETY            ;=>yes
+c2e0: 88                           dey
+c2e1: d0 eb                        bne     IK2
+c2e3: ca                           dex
+c2e4: d0 e6                        bne     IK1
+c2e6: 18           KDRETN          clc
+c2e7: 90 01                        bcc     KDRET
+
+c2e9: 38           KDRETY          sec
+c2ea: 60           KDRET           rts
+
+                   ;
+                   ; Exit.  Either exit with or without enabling I/O space.
+                   ;
+c2eb: 28           F_RETURN        plp                       ;get prior I/O disable
+c2ec: 30 03                        bmi     F_RET1            ;=>leave it disabled
+c2ee: 4c 29 fd                     jmp     MON_FUNCEXIT      ;=>exit & enable I/O
+
+c2f1: 4c 2c fd     F_RET1          jmp     MON_FUNCEXIT+3    ;exit disabled
+
+                   ; --------------------------------------------------
+c2f4: a9 a0        X_CLEOLZ        lda     #$a0
+c2f6: 91 28        X_CLEOL2        sta     (MON_BASL),y
+c2f8: c8                           iny
+c2f9: c4 21                        cpy     MON_WNDWDTH
+c2fb: 90 f9                        bcc     X_CLEOL2
+c2fd: 60                           rts
+
+c2fe: 00 00        ZSPAREC2        .align  $0100 (2 bytes)
+
+                   ********************************************************************************
+                   *                                                                              *
+                   * This is the $C3xx ROM space.                                                 *
+                   *                                                                              *
+                   ********************************************************************************
+c300: 2c 58 ff     BASICINT        bit     MON_IORTS         ;set V-flag (init)
+c303: 70 12                        bvs     BASICENT          ;(always taken)
+c305: 38           BASICIN         sec
+c306: 90                           bcc ▼   LC320             ;(never taken)
+c307: 18           BASICOUT        clc
+c308: b8                           clv                       ;clear V-flag (not init)
+c309: 50 0c                        bvc     BASICENT          ;(always taken)
+
+                   ;
+                   ; Pascal 1.1 firmware protocol table.
+                   ;
+c30b: 01                           .dd1    $01               ;generic signature byte
+c30c: 88                           .dd1    $88               ;device signature byte
+c30d: 4b                           .dd1    <JPINIT           ;Pascal INIT
+c30e: 51                           .dd1    <JPREAD           ;Pascal READ
+c30f: 57                           .dd1    <JPWRITE          ;Pascal WRITE
+c310: 5d                           .dd1    <JPSTAT           ;Pascal STATUS
+
+                   ;
+                   ; 128K support routine entries.
+                   ;
+c311: 4c 63 c3                     jmp     MOVE              ;memory move across banks
+
+c314: 4c b0 c3                     jmp     XFER              ;transfer across banks
+
+                   ;
+                   ; BASIC I/O entry point.
+                   ;
+c317: 8d 7b 06     BASICENT        sta     CHAR              ;save character
+c31a: 48                           pha                       ;save AC
+c31b: 98                           tya                       ; and Y
+c31c: 48                           pha
+c31d: 8a                           txa                       ; and X
+c31e: 48                           pha
+c31f: 08                           php                       ;save carry & V-flag
+                   ;
+                   ; Set IRQMODE
+                   ;
+c320: ad fb 04     LC320           lda     MODE              ;assume IRQ is disabled
+c323: 29 fe                        and     #$fe              ;[AND #255-M.IRQ]
+c325: 8d fb 04                     sta     MODE
+c328: 68                           pla                       ;get pstatus
+c329: 48                           pha                       ; and leave on stack
+c32a: 29 04                        and     #$04              ;is 'I' bit set?
+c32c: d0 08                        bne     BASICENT2         ;=>yes, disabled
+c32e: ad fb 04                     lda     MODE
+c331: 09 01                        ora     #M_IRQ
+c333: 8d fb 04                     sta     MODE              ;set it enabled
+c336: ad ff cf     BASICENT2       lda     CLRROM            ;kick out all C8 ROMs
+c339: a5 25                        lda     MON_CV            ;get user CV and
+c33b: 8d fb 05                     sta     OURCV             ; stuff it for us
+c33e: 20 eb c3                     jsr     SETC8             ;setup C8 indicator
+c341: 28                           plp                       ;get V-flag (init)
+c342: 08                           php
+c343: 70 03                        bvs     JBASINIT          ;=>do the init
+c345: 4c 66 c8                     jmp     C8BASIC           ;get out of CN space
+
+c348: 4c 03 c8     JBASINIT        jmp     BASICINIT         ;=>goto C8 space
+
+c34b: 20 eb c3     JPINIT          jsr     SETC8             ;setup C8 indicator
+c34e: 4c 4f ca                     jmp     PINIT             ;xfer to Pascal INIT
+
+c351: 20 eb c3     JPREAD          jsr     SETC8             ;setup C8 indicator
+c354: 4c 74 ca                     jmp     PREAD             ;xfer to Pascal READ
+
+c357: 20 eb c3     JPWRITE         jsr     SETC8             ;setup C8 indicator
+c35a: 4c 8e ca                     jmp     PWRITE            ;xfer to Pascal WRITE
+
+c35d: 20 eb c3     JPSTAT          jsr     SETC8             ;setup C8 indicator
+c360: 4c 94 c9                     jmp     PSTATUS           ;xfer to Pascal STATUS
+
+                   ********************************************************************************
+                   * Name    : MOVE                                                               *
+                   * Function: perform crossbank memory move                                      *
+                   * Input   : A1=source address                                                  *
+                   *         : A2=source end                                                      *
+                   *         : A4=destination start                                               *
+                   *         : carry set=main-->card                                              *
+                   *         :       clr=card-->main                                              *
+                   * Output  : none                                                               *
+                   * Volatile: nothing                                                            *
+                   * Calls   : nothing                                                            *
+                   ********************************************************************************
+c363: 48           MOVE            pha                       ;save AC
+c364: 98                           tya                       ; and Y
+c365: 48                           pha
+c366: ad 13 c0                     lda     RDRAMRD           ;save state of
+c369: 48                           pha                       ; memory flags
+c36a: ad 14 c0                     lda     RDRAMWRT
+c36d: 48                           pha
+                   ;
+                   ; Set flags for crossbank move.
+                   ;
+c36e: 90 08                        bcc     MOVEC2M           ;=>card-->main
+c370: 8d 02 c0                     sta     RDMAINRAM         ;set for main
+c373: 8d 05 c0                     sta     WRCARDRAM         ; to card
+c376: b0 06                        bcs     MOVESTRT          ;=>(always taken)
+
+c378: 8d 04 c0     MOVEC2M         sta     WRMAINRAM         ;set for card
+c37b: 8d 03 c0                     sta     RDCARDRAM         ; to main
+c37e: a0 00        MOVESTRT        ldy     #0
+c380: b1 3c        MOVELOOP        lda     (MON_A1L),y       ;get a byte
+c382: 91 42                        sta     (MON_A4L),y       ;mvoe it
+c384: e6 42                        inc     MON_A4L
+c386: d0 02                        bne     NXTA1
+c388: e6 43                        inc     MON_A4H
+c38a: a5 3c        NXTA1           lda     MON_A1L
+c38c: c5 3e                        cmp     MON_A2L
+c38e: a5 3d                        lda     MON_A1H
+c390: e5 3f                        sbc     MON_A2H
+c392: e6 3c                        inc     MON_A1L
+c394: d0 02                        bne     C01
+c396: e6 3d                        inc     MON_A1H
+c398: 90 e6        C01             bcc     MOVELOOP          ;=>more to move
+                   ;
+                   ; Restore original flags.
+                   ;
+c39a: 8d 04 c0                     sta     WRMAINRAM         ;clear flag2
+c39d: 68                           pla                       ;get original state
+c39e: 10 03                        bpl     C03               ;=>it was off
+c3a0: 8d 05 c0                     sta     WRCARDRAM
+c3a3: 8d 02 c0     C03             sta     RDMAINRAM         ;clear flag1
+c3a6: 68                           pla                       ;get original state
+c3a7: 10 03                        bpl     MOVERET           ;=>it was off
+c3a9: 8d 03 c0                     sta     RDCARDRAM
+c3ac: 68           MOVERET         pla                       ;restore Y
+c3ad: a8                           tay
+c3ae: 68                           pla                       ; and AC
+c3af: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : XFER                                                               *
+                   * Function: transfer control crossbank                                         *
+                   * Input   : $03ED=transfer addr                                                *
+                   *         : carry set=xfer to card                                             *
+                   *         :       clr=xfer to main                                             *
+                   *         : V-flag clr=use std ZP/stk                                          *
+                   *         :        set=use alt ZP/stk                                          *
+                   * Output  : none                                                               *
+                   * Volatile: $03ed/03ee in dest bank                                            *
+                   * Calls   : nothing                                                            *
+                   * Note    : entered via JMP, not JSR                                           *
+                   ********************************************************************************
+c3b0: 48           XFER            pha                       ;save AC on current stack
+                   ;
+                   ; Copy destination address to the other bank so that we have it in case we do a
+                   ; swap.
+                   ;
+c3b1: ad ed 03                     lda     $03ed             ;get xferaddr lo
+c3b4: 48                           pha                       ;save on current stack
+c3b5: ad ee 03                     lda     $03ee             ;get xferaddr hi
+c3b8: 48                           pha                       ;save it too
+                   ;
+                   ; Switch to appropriate bank.
+                   ;
+c3b9: 90 0a                        bcc     XFERC2M           ;=>card-->main
+c3bb: 8d 03 c0                     sta     RDCARDRAM         ;set for running
+c3be: 8d 05 c0                     sta     WRCARDRAM         ; in card RAM
+c3c1: 50 19                        bvc     XFERSZP           ;=>use std ZP/stk
+c3c3: 70 08                        bvs     XFERAZP           ;=>use alt ZP/stk
+
+c3c5: 8d 02 c0     XFERC2M         sta     RDMAINRAM         ;set for running
+c3c8: 8d 04 c0                     sta     WRMAINRAM         ; in main RAM
+c3cb: 50 0f                        bvc     XFERSZP           ;=>use std ZP/stk
+                   ; switch to alt ZP/stk
+c3cd: 68           XFERAZP         pla                       ;stuff xferaddr
+c3ce: 8d ee 03                     sta     $03ee             ; hi and
+c3d1: 68                           pla
+c3d2: 8d ed 03                     sta     $03ed             ;  lo
+c3d5: 68                           pla                       ;restore AC
+c3d6: 8d 09 c0                     sta     SETALTZP          ;switch to alt ZP/stk
+c3d9: 6c ed 03                     jmp     ($03ed)           ;=>off we go!
+
+c3dc: 68           XFERSZP         pla                       ;stuff xferaddr
+c3dd: 8d ee 03                     sta     $03ee             ; hi and
+c3e0: 68                           pla
+c3e1: 8d ed 03                     sta     $03ed             ;  lo
+c3e4: 68                           pla                       ;restore AC
+c3e5: 8d 08 c0                     sta     SETSTDZP          ;=>switch to std ZP/stk
+c3e8: 6c ed 03                     jmp     ($03ed)           ;off we go!
+
+                   ********************************************************************************
+                   * Name    : SETC8                                                              *
+                   * Function: setup IRQ $C800 protocol                                           *
+                   * Input   : none                                                               *
+                   * Output  : none                                                               *
+                   * Volatile: nothing                                                            *
+                   * Calls   : nothing                                                            *
+                   ********************************************************************************
+c3eb: 48           SETC8           pha                       ;save AC
+c3ec: a9 c3                        lda     #>CN00            ;slot number
+c3ee: 8d f8 07                     sta     ACTV_PERIP_SLOT   ;stuff it
+c3f1: 68                           pla                       ;restore AC
+c3f2: 60                           rts
+
+c3f3: 00 00 00 00+                 .align  $0100 (13 bytes)
+
+                                   .org    $c800
+                   ********************************************************************************
+                   *                                                                              *
+                   * This is the C8XX space.                                                      *
+                   *                                                                              *
+                   ********************************************************************************
+c800: 4c 4a ca                     jmp     PINIT1_0          ;Pascal 1.0 init
+
+                   ;
+                   ; BASIC initialization.
+                   ;
+c803: a9 06        BASICINIT       lda     #GOODF8           ;check F8 ROM
+c805: cd b3 fb                     cmp     MON_VERSION       ; is it OK?
+c808: f0 0c                        beq     BINIT1            ;=>yes
+c80a: 20 78 cf                     jsr     COPYROM           ;try copying to RAM card
+c80d: cd b3 fb                     cmp     MON_VERSION
+c810: f0 04                        beq     BINIT1            ;=>now it's good
+c812: 78                           sei                       ;crash the system!
+c813: 4c 13 c8     HANG            jmp     HANG              ;hang forever
+
+c816: a9 c3        BINIT1          lda     #>CN00            ;set hooks for
+c818: 85 37                        sta     MON_CSWH
+c81a: 85 39                        sta     MON_KSWH          ; in & out
+c81c: a9 05                        lda     #<BASICIN
+c81e: 85 38                        sta     MON_KSWL
+c820: a9 07                        lda     #<BASICOUT
+c822: 85 36                        sta     MON_CSWL
+c824: a9 00                        lda     #0                ;set full 40-col window
+c826: 85 20                        sta     MON_WNDLEFT
+c828: a9 00                        lda     #0                ;assume text mode
+c82a: 2c 1a c0                     bit     RDTEXT            ;in text mode?
+c82d: 30 02                        bmi     BINIT1A           ;=>yes
+c82f: a9 14                        lda     #20               ;if gr, set 4 lines
+c831: 85 22        BINIT1A         sta     MON_WNDTOP
+c833: a9 18                        lda     #24
+c835: 85 23                        sta     MON_WNDBTM
+c837: a9 28                        lda     #40
+c839: 85 21                        sta     MON_WNDWDTH
+c83b: a5 24                        lda     MON_CH            ;copy user CH
+c83d: 8d 7b 04                     sta     OLDCH             ; as 'old' setting
+c840: a9 01                        lda     #M_IRQ            ;set ready to clear
+c842: 2d fb 04                     and     MODE              ;preserve IRQ status
+c845: 8d fb 04                     sta     MODE              ;clear modes
+c848: 4c 50 c8                     jmp     BINIT2            ;=>continue after Pascal 1.0 hook
+
+                   ;
+                   ; Pascal 1.0 input hook.
+                   ;
+c84b: 00                           brk
+
+c84c: 00                           brk
+
+c84d: 4c 51 c3                     jmp     JPREAD            ;=>go to standard read
+
+                   ; --------------------------------------------------
+                   ;
+                   ; Is there a card?
+                   ;
+c850: 20 24 cb     BINIT2          jsr     TESTCARD          ;see if card plugged in
+c853: d0 08                        bne     CLEARIT           ;=>it's 40
+c855: 06 21                        asl     MON_WNDWDTH       ;set 80-col window
+c857: 8d 01 c0                     sta     SET80COL          ;enable 80 store
+c85a: 8d 0d c0                     sta     SET80VID          ; and 80 video
+                   ;
+                   ; Home & clear.
+                   ;
+c85d: 8d 0f c0     CLEARIT         sta     SETALTCHAR        ;set norm/inv lcase
+c860: 20 42 cd                     jsr     X_FF              ;clear it
+c863: 28                           plp                       ;CLC assures that
+c864: 18                           clc                       ; we print this
+c865: 08                           php                       ;  initial character
+                   ;
+                   ; Compensate for integer BASIC's hitting of $C000 on initial entry.
+                   ;
+c866: 2c 1f c0     C8BASIC         bit     RD80VID           ;which mode?
+c869: 10 09                        bpl     C8B2              ;=>40, leave alone
+c86b: 8d 01 c0                     sta     SET80COL          ;80, enable store
+                   ;
+                   ; Make sure scrolling window is an even number for 80-cols.
+                   ;
+c86e: a5 21                        lda     MON_WNDWDTH
+c870: 29 fe                        and     #$fe
+c872: 85 21                        sta     MON_WNDWDTH       ;round it to lower even
+                   ;
+                   ; Copy user's CH if it differs from what we last put there.
+                   ;
+c874: a5 24        C8B2            lda     MON_CH            ;get it
+c876: cd 7b 04                     cmp     OLDCH             ;is it the same?
+c879: f0 03                        beq     C8B3              ;=>yes, use our own
+c87b: 8d 7b 05                     sta     OURCH             ;=>no, use his
+c87e: a9 06        C8B3            lda     #GOODF8           ;check F8 ROM
+c880: cd b3 fb                     cmp     MON_VERSION       ;if different, user
+c883: f0 0b                        beq     C8B4              ; has reloaded RAM card
+                   ;
+                   ; Copy F8 ROM to lang card.
+                   ;
+c885: 20 78 cf                     jsr     COPYROM           ;copy it again
+c888: cd b3 fb                     cmp     MON_VERSION       ;is it now correct?
+c88b: f0 03                        beq     C8B4              ;=>great
+c88d: 4c 13 c8                     jmp     HANG              ;=>we have wrong ROM!
+
+c890: 28           C8B4            plp                       ;recover carry (in/out)
+c891: 90 03                        bcc     BOUT              ;=>print a char
+c893: 4c f6 c8                     jmp     BINPUT            ;=>input a char
+
+c896: ad fb 04     BOUT            lda     MODE              ;say that we're
+c899: 29 bf                        and     #$bf              ; printing [AND #255-M.BINPUT]
+c89b: 8d fb 04                     sta     MODE
+c89e: 4c a1 c8                     jmp     BPRINT            ;->output a char
+
+                   ;
+                   ; BASIC output.
+                   ;
+c8a1: ad 7b 06     BPRINT          lda     CHAR              ;get character
+c8a4: c9 8d                        cmp     #$8d              ;is it C/R?
+c8a6: d0 18                        bne     NOWAIT            ;=>nope, no vidwait
+c8a8: ac 00 c0                     ldy     KBD               ;is key pressed?
+c8ab: 10 13                        bpl     NOWAIT            ;no
+c8ad: c0 93                        cpy     #$93              ;is it Ctl-S?
+c8af: d0 0f                        bne     NOWAIT            ;no, ignore it
+c8b1: 2c 10 c0                     bit     KBDSTRB           ;clear strobe
+c8b4: ac 00 c0     KBDWAIT         ldy     KBD               ;wait for next keypress
+c8b7: 10 fb                        bpl     KBDWAIT
+c8b9: c0 83                        cpy     #$83              ;if Ctrl-C, leave it
+c8bb: f0 03                        beq     NOWAIT            ; in the kbd buffer
+c8bd: 2c 10 c0                     bit     KBDSTRB           ;clear other character
+c8c0: 29 7f        NOWAIT          and     #$7f              ;drop possible hi bit
+c8c2: c9 20                        cmp     #$20              ;is it control char?
+c8c4: b0 06                        bcs     BPNCTL            ;=>nope
+c8c6: 20 99 cb                     jsr     CTLCHAR           ;execute possible ctl char
+c8c9: 4c e2 c8                     jmp     BIORET            ;=>executed or ignored
+
+                   ;
+                   ; Not a ctl char, print it.
+                   ;
+c8cc: ac 7b 05     BPNCTL          ldy     OURCH             ;get CH
+c8cf: ad 7b 06                     lda     CHAR              ;get char (all 8 bits)
+c8d2: 20 f2 ce                     jsr     STORCHAR          ;stuff onto screen
+                   ;
+                   ; Bump the cursor horizontal.
+                   ;
+c8d5: ee 7b 05                     inc     OURCH             ;bump it
+c8d8: ad 7b 05                     lda     OURCH             ;are we past the
+c8db: c5 21                        cmp     MON_WNDWDTH       ; end of the line?
+c8dd: 90 03                        bcc     BIORET            ;=>no, no problem
+c8df: 20 ec cb                     jsr     X_CR              ;yes, do C/R
+                   ;
+c8e2: ad 7b 05     BIORET          lda     OURCH             ;set CH and CV
+c8e5: 20 af ce                     jsr     SETCH             ; for BASIC
+c8e8: ad fb 05                     lda     OURCV
+c8eb: 85 25                        sta     MON_CV
+c8ed: 68                           pla                       ;restore
+c8ee: aa                           tax
+c8ef: 68                           pla                       ;X and Y
+c8f0: a8                           tay
+c8f1: 68                           pla                       ; and AC
+c8f2: ad 7b 06                     lda     CHAR
+c8f5: 60                           rts                       ;return to BASIC
+
+                   ;
+                   ; BASIC input.
+                   ;
+c8f6: ad fb 04     BINPUT          lda     MODE              ;say that
+c8f9: 09 40                        ora     #M_BINPUT         ; we're inputting
+c8fb: 8d fb 04                     sta     MODE
+c8fe: ad 7b 06                     lda     CHAR              ;get char at cursor and
+c901: a4 24                        ldy     MON_CH            ;get cursor position
+c903: 91 28                        sta     (MON_BASL),y      ; repair monitor's silly attempt
+c905: 20 dd ce     B_INPUT         jsr     INVERT            ;create our own cursor image
+c908: 20 15 cb                     jsr     GETKEY            ;get a key
+c90b: 8d 7b 06                     sta     CHAR              ;save it
+c90e: 20 dd ce                     jsr     INVERT            ;remove cursor
+c911: c9 9b                        cmp     #$9b              ;escape key?
+c913: f0 03                        beq     ESCAPING          ;=>yes it is
+c915: 4c b7 c9                     jmp     NDESC             ;=>no, it's normal
+
+                   ;
+                   ; Start an escape sequence.  We handle the following ones:
+                   ;     @ - home & clear
+                   ;     E - clr to EOL
+                   ;     F - clr to EOS
+                   ;     I - cursor up
+                   ;     J - cursor left
+                   ;     K - cursor right
+                   ;     M - cursor down
+                   ;     R - restrict to uppercase
+                   ;     T - turn off ESC-R
+                   ;     4 - goto 40 column mode
+                   ;     8 - goto 80 column mode
+                   ; Ctl-Q - quit (PR#0/IN#0)
+                   ;     the four arrow keys (as IJKM)
+                   ;
+c918: 20 52 cf     ESCAPING        jsr     ESCON             ;escape cursoron
+c91b: 20 15 cb                     jsr     GETKEY            ;get escape function
+c91e: 20 65 cf                     jsr     ESCOFF            ;replace original character
+c921: 29 7f                        and     #$7f              ;drop hi bit
+c923: c9 60                        cmp     #$60              ;is it lowercase?
+c925: 90 02                        bcc     ESC1              ;=>no, don't upshift
+c927: 29 df                        and     #$df              ;upshift [AND #255-$20]
+c929: a0 11        ESC1            ldy     #ESCNUM           ;count/index
+c92b: d9 72 c9     ESC2            cmp     ESCTAB,y          ;is it a valid escape?
+c92e: f0 05                        beq     ESC3              ;=>yes
+c930: 88                           dey
+c931: 10 f8                        bpl     ESC2              ;try 'em all...
+c933: 30 10                        bmi     ESCSPEC           ;=>maybe it's a special one
+
+c935: b9 83 c9     ESC3            lda     ESCCHAR,y         ;get char to "print"
+c938: 29 7f                        and     #$7f              ;drop hi bit (flag)
+c93a: 20 99 cb                     jsr     CTLCHAR           ;execute it
+c93d: b9 83 c9                     lda     ESCCHAR,y         ;get flag
+c940: 30 d6                        bmi     ESCAPING          ;=>stay in escape mode
+c942: 4c 05 c9                     jmp     B_INPUT           ;=>quit escape mode
+
+c945: c9 11        ESCSPEC         cmp     #$11              ;is it ESC-Ctl-Q?
+c947: d0 0b                        bne     ESCSPEC2          ;=>no
+c949: 20 aa cd                     jsr     QUIT              ;do the quitting stuff
+c94c: a9 98                        lda     #$98              ;return Ctl-X as
+c94e: 8d 7b 06                     sta     CHAR              ; the character
+c951: 4c e2 c8                     jmp     BIORET            ;=>quit the card forever
+
+c954: c9 52        ESCSPEC2        cmp     #‘R’              ;is it Esc-R?
+c956: d0 0b                        bne     ESCSPEC3          ;=>no
+c958: ad fb 04                     lda     MODE              ;yes, set it
+c95b: 09 80                        ora     #M_ESCR
+c95d: 8d fb 04                     sta     MODE
+c960: 4c 05 c9     ESCNONE         jmp     B_INPUT           ;quit escape mode
+
+c963: c9 54        ESCSPEC3        cmp     #‘T’              ;is it Esc-T?
+c965: d0 f9                        bne     ESCNONE           ;=>nothing
+c967: ad fb 04                     lda     MODE
+c96a: 29 7f                        and     #$7f              ;[AND #255-M.ESCR]
+c96c: 8d fb 04                     sta     MODE
+c96f: 4c 05 c9                     jmp     B_INPUT           ;quit escape mode
+
+c972: 40           ESCTAB          .dd1    ‘@’
+c973: 41                           .dd1    ‘A’               ;handle old escapes
+c974: 42                           .dd1    ‘B’
+c975: 43                           .dd1    ‘C’
+c976: 44                           .dd1    ‘D’
+c977: 45                           .dd1    ‘E’
+c978: 46                           .dd1    ‘F’
+c979: 49                           .dd1    ‘I’
+c97a: 4a                           .dd1    ‘J’
+c97b: 4b                           .dd1    ‘K’
+c97c: 4d                           .dd1    ‘M’
+c97d: 34                           .dd1    ‘4’
+c97e: 38                           .dd1    ‘8’
+c97f: 08                           .dd1    $08               ;left arrow
+c980: 0a                           .dd1    $0a               ;down arrow
+c981: 0b                           .dd1    $0b               ;up   arrow
+c982: 15                           .dd1    $15               ;rite arrow
+                   ; ESCNUM EQU *-ESCTAB ;$11
+c983: 0c           ESCCHAR         .dd1    $0c               ;@: formfeed
+c984: 1c                           .dd1    $1c               ;A: FS
+c985: 08                           .dd1    $08               ;B: BS
+c986: 0a                           .dd1    $0a               ;C: LF
+c987: 1f                           .dd1    $1f               ;D: US
+c988: 1d                           .dd1    $1d               ;E: GS
+c989: 0b                           .dd1    $0b               ;F: VT
+c98a: 9f                           .dd1    $9f               ;I: US (stay ESC)
+c98b: 88                           .dd1    $88               ;J: BS (stay ESC)
+c98c: 9c                           .dd1    $9c               ;K: FS (stay ESC)
+c98d: 8a                           .dd1    $8a               ;M: LF (stay ESC)
+c98e: 11                           .dd1    $11               ;4: DC1
+c98f: 12                           .dd1    $12               ;8: DC2
+c990: 88                           .dd1    $88               ;<-:BS (stay ESC)
+c991: 8a                           .dd1    $8a               ;DN:LF (stay ESC)
+c992: 9f                           .dd1    $9f               ;UP:US (stay ESC)
+c993: 9c                           .dd1    $9c               ;->:FS (stay ESC)
+
+                   ;
+                   ; Pascal STATUS.
+                   ;
+c994: aa           PSTATUS         tax                       ;save request code
+c995: 20 c8 cf                     jsr     PSETUP            ;setup ZP stuff
+c998: 8a                           txa                       ;is it 'ready for output?'
+c999: d0 03                        bne     PSTATUS2          ;=>no
+c99b: 38                           sec                       ;yes, ready for output
+c99c: b0 16                        bcs     PSTATUS4
+
+c99e: c9 01        PSTATUS2        cmp     #$01              ;is it 'any input?'
+c9a0: f0 0e                        beq     PSTATUS3          ;=>yes
+c9a2: a2 03                        ldx     #$03              ;ioresult='ILGL OPERATION'
+c9a4: 18                           clc
+c9a5: 60                           rts
+
+                   ;
+                   ; Pascal 1.0 output hook.
+                   ;
+c9a6: 00                           brk                       ;padding
+
+c9a7: 00                           brk
+
+c9a8: 00                           brk
+
+c9a9: 00                           brk
+
+c9aa: ad 7b 06                     lda     CHAR              ;get output character
+c9ad: 4c 57 c3                     jmp     JPWRITE           ;=>use standard write
+
+c9b0: ad 00 c0     PSTATUS3        lda     KBD               ;is there a keypress?
+c9b3: 0a                           asl     A                 ;strobe==>carry
+c9b4: a2 00        PSTATUS4        ldx     #$00              ;ioresult='GOOD'
+c9b6: 60                           rts
+
+                   ;
+                   ; --------------------------------------------------
+                   ; BASIC input, continued: not an escape sequence.
+                   ;
+c9b7: c9 95        NDESC           cmp     #$95              ;is it pick?  [Ctrl+U / right arrow]
+c9b9: d0 0b                        bne     B_NOPICK          ;=>nope
+c9bb: ac 7b 05                     ldy     OURCH             ;you can pick yer friends...
+c9be: 20 01 cf                     jsr     PICK              ;yes, pick the char
+c9c1: 09 80                        ora     #$80              ;always pick as normal
+c9c3: 8d 7b 06                     sta     CHAR              ;save as keystroke
+                   ;
+                   ; Track quotation marks for the restrict-uppercase feature.
+                   ;
+c9c6: ad fb 04     B_NOPICK        lda     MODE              ;are we doing literal input?
+c9c9: 29 10                        and     #M_LIT
+c9cb: d0 12                        bne     B_CHKCAN          ;=>yes
+                   ;
+                   ; Literal input's inactive.  See if we can start literal input.
+                   ;
+c9cd: ad 7b 06                     lda     CHAR              ;get the char
+c9d0: c9 a2                        cmp     #$a2              ;is it a double quote?
+c9d2: f0 23                        beq     B_FLIP            ;=>yes, flip literal mode
+c9d4: c9 88                        cmp     #$88              ;is he moving left?
+c9d6: d0 32                        bne     B_FIXCHR          ;=>nope, just reg char
+c9d8: 20 27 ca                     jsr     GETPRIOR          ;grab prior char
+c9db: d0 2d                        bne     B_FIXCHR          ;=>not deleting a quote
+c9dd: f0 18                        beq     B_FLIP            ;(always) hie's[sic] deleted the quote
+
+                   ;
+                   ; Literal input's active.  See if it should be cancelled yet.
+                   ;
+c9df: ad 7b 06     B_CHKCAN        lda     CHAR              ;get current char
+c9e2: c9 a2                        cmp     #$a2              ;is current char the closing quote?
+c9e4: f0 1c                        beq     B_CANLIT          ;=>yes
+c9e6: c9 98                        cmp     #$98              ;cancel literal input
+c9e8: f0 18                        beq     B_CANLIT          ; if Ctl-X or return
+c9ea: c9 8d                        cmp     #$8d              ;  or back over "
+c9ec: f0 14                        beq     B_CANLIT
+c9ee: c9 88                        cmp     #$88              ;backspace?
+c9f0: d0 18                        bne     B_FIXCHR          ;=>no, not deleting quote
+c9f2: 20 27 ca                     jsr     GETPRIOR          ;get char he's deleting
+c9f5: d0 13                        bne     B_FIXCHR          ;=>not deleting a quote
+                   ;
+c9f7: ad fb 04     B_FLIP          lda     MODE              ;flip the mode
+c9fa: 49 10                        eor     #M_LIT
+c9fc: 8d fb 04                     sta     MODE
+c9ff: 4c 0a ca                     jmp     B_FIXCHR
+
+ca02: ad fb 04     B_CANLIT        lda     MODE
+ca05: 29 ef                        and     #$ef              ;cancel literal input [AND #255-M.LIT]
+ca07: 8d fb 04                     sta     MODE
+                   ;
+ca0a: ad fb 04     B_FIXCHR        lda     MODE              ;Esc-R facility active?
+ca0d: 29 80                        and     #M_ESCR
+ca0f: f0 13                        beq     B_INRET           ;=>nope
+ca11: ad fb 04                     lda     MODE              ;literal input active?
+ca14: 29 10                        and     #M_LIT
+ca16: d0 0c                        bne     B_INRET           ;=>yes, no upshift
+ca18: ad 7b 06                     lda     CHAR              ;get the char
+ca1b: c9 e0                        cmp     #$e0              ;is char lowercase?
+ca1d: 90 05                        bcc     B_INRET           ;=>no, no need to shift it
+ca1f: 29 df                        and     #$df              ;restrict to U/C
+ca21: 8d 7b 06                     sta     CHAR
+                   ; --------------------------------------------------
+ca24: 4c e2 c8     B_INRET         jmp     BIORET            ;=>return to caller
+
+                   ********************************************************************************
+                   * Name    : GETPRIOR                                                           *
+                   * Function: get char before cursor                                             *
+                   * Input   : OURCH, OURCV                                                       *
+                   * Output  : 'BEQ' if char=dbl quote                                            *
+                   *         : 'BNE' if not                                                       *
+                   * Volatile: AC, 'TEMP1'                                                        *
+                   * Calls   : PICK, X_BS, X_FS                                                   *
+                   ********************************************************************************
+ca27: ad fb 05     GETPRIOR        lda     OURCV             ;don't try to look
+ca2a: 0d 7b 05                     ora     OURCH             ; back if @ upper-left
+ca2d: f0 1a                        beq     GPX               ;  corner of window!!!
+ca2f: 98                           tya                       ;save Y
+ca30: 48                           pha
+ca31: 20 db cb                     jsr     X_BS              ;back up 1 char
+ca34: ac 7b 05                     ldy     OURCH             ;get CH and
+ca37: 20 01 cf                     jsr     PICK              ; pick prior char
+ca3a: 09 80                        ora     #$80              ;pick as normal video
+ca3c: 8d 78 04                     sta     TEMP1             ;hold char
+ca3f: 20 26 cc                     jsr     X_FS
+ca42: 68                           pla                       ;restore
+ca43: a8                           tay                       ; Y
+ca44: ad 78 04                     lda     TEMP1
+ca47: c9 a2                        cmp     #$a2              ;is it dbl quote?
+ca49: 60           GPX             rts                       ;return with BEQ/BNE
+
+                   ;
+                   ; Pascal initialization.
+                   ;
+ca4a: a9 22        PINIT1_0        lda     #$22              ;[LDA #M.PASCAL+M.PAS1.0]
+ca4c: 4c 51 ca                     jmp     PINIT2
+
+ca4f: a9 20        PINIT           lda     #M_PASCAL         ;say we're
+ca51: 8d fb 04     PINIT2          sta     MODE              ; running Pascal
+ca54: 20 9b cd                     jsr     FULL80            ;set full 24x80 window
+ca57: 20 c8 cf                     jsr     PSETUP            ;setup ZP stuff
+                   ;
+                   ; Base addr is wrong, but X_FF fixes it below.
+                   ;  JSR BASCALC ;force a good BASCALC
+                   ;
+                   ; See if the card's plugged in.
+                   ;
+ca5a: 20 24 cb                     jsr     TESTCARD          ;is it there?
+ca5d: f0 03                        beq     PIGOOD            ;=>yes
+ca5f: a2 09                        ldx     #9                ;ioresult='NO DEVICE'
+ca61: 60                           rts
+
+ca62: 8d 01 c0     PIGOOD          sta     SET80COL          ;enable 80 store
+ca65: 8d 0d c0                     sta     SET80VID          ; and 80 video
+ca68: 8d 0f c0                     sta     SETALTCHAR        ;norm+inv lcase
+ca6b: 20 42 cd                     jsr     X_FF              ;home & clear it
+ca6e: 20 dd ce                     jsr     INVERT            ;put cursor there
+ca71: a2 00                        ldx     #0                ;ioresult='GOOD'
+ca73: 60                           rts
+
+                   ;
+                   ; Pascal input.
+                   ;
+ca74: 20 c8 cf     PREAD           jsr     PSETUP            ;setup ZP stuff
+ca77: 20 15 cb                     jsr     GETKEY            ;get a keystroke
+ca7a: 29 7f                        and     #$7f              ;drop hi bit
+ca7c: 8d 7b 06                     sta     CHAR              ;save the char
+ca7f: a2 00                        ldx     #0                ;ioresult='GOOD'
+ca81: ad fb 04                     lda     MODE              ;are we in 1.0-mode?
+ca84: 29 02                        and     #M_PAS1_0
+ca86: f0 02                        beq     PREADRET2         ;=>nope
+ca88: a2 c3                        ldx     #>CN00            ;yes, return CN in X
+                   ;
+ca8a: ad 7b 06     PREADRET2       lda     CHAR              ;restore char
+ca8d: 60                           rts
+
+                   ;
+                   ; Pascal output.
+                   ;
+ca8e: 8d 7b 06     PWRITE          sta     CHAR              ;save character
+ca91: 20 c8 cf                     jsr     PSETUP            ;setup ZP stuff
+                   ;
+ca94: 20 dd ce                     jsr     INVERT            ;turn cursor off
+ca97: ad fb 04                     lda     MODE              ;are we doing GOTOXY?
+ca9a: 29 08                        and     #M_GOXY
+ca9c: f0 2d                        beq     PWRITE3           ;=>no, print it
+                   ;
+                   ; Handle GOTOXY stuff.
+                   ;
+ca9e: ad fb 06     PWRITE2         lda     XCOORD            ;are we waiting for X?
+caa1: 10 0c                        bpl     GETY              ;=>no, this is Y
+caa3: ad 7b 06                     lda     CHAR
+caa6: 38                           sec
+caa7: e9 20                        sbc     #32               ;make binary
+caa9: 8d fb 06                     sta     XCOORD
+caac: 4c 0f cb                     jmp     PWRITERET         ;=>now wait for Y
+
+                   ;
+                   ; Now do the GOTOXY.
+                   ;
+caaf: ad 7b 06     GETY            lda     CHAR              ;convert YCOORD
+cab2: 38                           sec
+cab3: e9 20                        sbc     #32
+cab5: 8d fb 05                     sta     OURCV
+cab8: 20 51 cb                     jsr     BASCALC           ;compute base address
+cabb: ad fb 06                     lda     XCOORD
+cabe: 8d 7b 05                     sta     OURCH
+cac1: ad fb 04                     lda     MODE              ;turn off GOTOXY
+cac4: 29 f7                        and     #$f7              ;[AND #255-M.GOXY]
+cac6: 8d fb 04                     sta     MODE
+cac9: d0 44                        bne     PWRITERET         ;=>done (always taken)
+                   ;
+cacb: ad 7b 06     PWRITE3         lda     CHAR              ;get char to print
+cace: c9 1e                        cmp     #$1e              ;is it GOTOXY?
+cad0: f0 0a                        beq     STARTXY           ;=>yes
+cad2: c9 20                        cmp     #$20              ;is it other ctl?
+cad4: b0 15                        bcs     PWRITE4           ;=>no, print it
+cad6: 20 99 cb                     jsr     CTLCHAR           ;execute it if possible
+cad9: 4c 0f cb                     jmp     PWRITERET         ;=>executed or ignored
+
+                   ;
+                   ; Start the GOTOXY sequence.
+                   ;
+cadc: ad fb 04     STARTXY         lda     MODE              ;turn on flag
+cadf: 09 08                        ora     #M_GOXY
+cae1: 8d fb 04                     sta     MODE
+cae4: a9 ff                        lda     #$ff              ;set X negative to
+cae6: 8d fb 06                     sta     XCOORD            ; show we need it
+cae9: 30 24                        bmi     PWRITERET         ;=>exit till coords come by (always)
+
+                   ;
+                   ; Just a printable character.
+                   ;
+caeb: 09 80        PWRITE4         ora     #$80              ;force to normal
+caed: ac 7b 05                     ldy     OURCH             ;get CH
+caf0: 20 f2 ce                     jsr     STORCHAR          ;stuff it!
+                   ;
+                   ; Bump cursor horizontal.
+                   ;
+caf3: ee 7b 05                     inc     OURCH             ;bump it
+caf6: ad 7b 05                     lda     OURCH             ;are we past the
+caf9: c5 21                        cmp     MON_WNDWDTH       ; end of the line?
+cafb: 90 12                        bcc     PWRITERET         ;=>no, no problem
+                   ;
+                   ; If in transparent mode, don't wraparound the right edge...
+                   ;
+cafd: ad fb 04                     lda     MODE              ;get mode
+cb00: 29 01                        and     #M_TRANS          ;well???
+cb02: f0 05                        beq     PWWRAP            ;=>not transparent
+cb04: ce 7b 05                     dec     OURCH             ;pin at right edge
+cb07: d0 06                        bne     PWRITERET         ;(always taken)
+
+cb09: 20 ec cb     PWWRAP          jsr     X_CR              ;yes, do C/R
+cb0c: 20 91 cc                     jsr     X_LF              ; and L/F
+                   ;
+cb0f: 20 dd ce     PWRITERET       jsr     INVERT            ;turn cursor on
+cb12: a2 00                        ldx     #0                ;ioresult='GOOD'
+cb14: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : GETKEY                                                             *
+                   * Function: get a keystroke                                                    *
+                   * Input   : none                                                               *
+                   * Output  : AC=keycode                                                         *
+                   * Volatile: none                                                               *
+                   ********************************************************************************
+cb15: e6 4e        GETKEY          inc     MON_RNDL          ;bump random seed
+cb17: d0 02                        bne     GETK2
+cb19: e6 4f                        inc     MON_RNDH
+cb1b: ad 00 c0     GETK2           lda     KBD               ;keypress?
+cb1e: 10 f5                        bpl     GETKEY            ;=>nope
+cb20: 8d 10 c0                     sta     KBDSTRB           ;clear strobe
+cb23: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : TESTCARD                                                           *
+                   * Function: see if 80col card plugged in                                       *
+                   * Input   : none                                                               *
+                   * Output  : 'BEQ' if card available                                            *
+                   *         : 'BNE' if not                                                       *
+                   * Volatile: AC, Y                                                              *
+                   ********************************************************************************
+cb24: ad 1c c0     TESTCARD        lda     RDPAGE2           ;remember current video display
+cb27: 0a                           asl     A                 ; in the carry
+cb28: a9 88                        lda     #$88              ;useful char for testing
+cb2a: 2c 18 c0                     bit     RD80COL           ;remember video mode in 'N'
+cb2d: 8d 01 c0                     sta     SET80COL          ;enable 80col store
+cb30: 08                           php                       ;lock interrupts while
+cb31: 78                           sei                       ; screenholes are wrong
+cb32: 08                           php                       ;save 'N' and 'C' flags
+cb33: 8d 55 c0                     sta     TXTPAGE2          ;set page 2
+cb36: ac 00 04                     ldy     $0400             ;get first char
+cb39: 8d 00 04                     sta     $0400             ;set to a '*'
+cb3c: ad 00 04                     lda     $0400             ;get it back from RAM
+cb3f: 8c 00 04                     sty     $0400             ;restore orig char
+cb42: 28                           plp                       ;restore 'N' and 'C' flags
+cb43: b0 03                        bcs     STAY2             ;stay in page2
+cb45: 8d 54 c0                     sta     TXTPAGE1          ;restore page1
+cb48: 30 03        STAY2           bmi     STAY80            ;=>stay in 80col mode
+cb4a: 8d 00 c0                     sta     CLR80COL          ;turn off 80col store
+cb4d: 28           STAY80          plp                       ;allow IRQ again
+cb4e: c9 88        TESTFAIL        cmp     #$88              ;was char valid?
+cb50: 60                           rts                       ;return result as BEQ/BNE
+
+                   ********************************************************************************
+                   * Name    : BASCALC, BASCALCZ                                                  *
+                   * Function: calc base addr for screen line                                     *
+                   * Input   : OURCV (BASCALC)                                                    *
+                   *         : AC=CV (BASCALCZ)                                                   *
+                   * Output  : BASL/BASH                                                          *
+                   * Volatile: nothing                                                            *
+                   * Calls   : SNIFFIRQ                                                           *
+                   ********************************************************************************
+cb51: 18           BASCALC         clc                       ;ripped off from F8 ROM; show entry point
+cb52: 90 01                        bcc     BSCLC1
+
+cb54: 38           BASCALCZ        sec                       ;show entry point
+cb55: 48           BSCLC1          pha                       ;save AC
+cb56: b0 03                        bcs     BSCLC1A           ;=>CV already in AC
+cb58: ad fb 05                     lda     OURCV
+cb5b: 48           BSCLC1A         pha
+cb5c: 4a                           lsr     A
+cb5d: 29 03                        and     #$03
+cb5f: 09 04                        ora     #$04
+cb61: 85 29                        sta     MON_BASH
+cb63: 8d fb 07                     sta     OLDBASH           ;save for F/W protocol
+cb66: 68                           pla
+cb67: 29 18                        and     #$18
+cb69: 90 02                        bcc     BSCLC2
+cb6b: 69 7f                        adc     #$7f
+cb6d: 85 28        BSCLC2          sta     MON_BASL
+cb6f: 0a                           asl     A
+cb70: 0a                           asl     A
+cb71: 05 28                        ora     MON_BASL
+cb73: 85 28                        sta     MON_BASL
+                   ;
+                   ; Handle the scrolling window.
+                   ;
+cb75: a5 20                        lda     MON_WNDLEFT
+cb77: 08                           php                       ;preserve carry
+cb78: 2c 1f c0                     bit     RD80VID           ;which mode?
+cb7b: 10 01                        bpl     BASCLC3           ;=>40, no divide
+cb7d: 4a                           lsr     A                 ;divide by 2 for 80col window
+cb7e: 28           BASCLC3         plp                       ;restore carry
+cb7f: 65 28                        adc     MON_BASL          ;adjust base for WNDLFT
+cb81: 85 28                        sta     MON_BASL
+cb83: 8d 7b 07                     sta     OLDBASL           ;save for F/W protocol
+                   ;
+                   ; Sniff for IRQ if necessary.
+                   ;
+cb86: ad fb 04                     lda     MODE
+cb89: 29 01                        and     #M_IRQ
+cb8b: f0 0a                        beq     BASCLCX           ;=>IRQ disabled, return
+cb8d: ad fb 04                     lda     MODE              ;is BASIC running?
+cb90: 29 20                        and     #M_PASCAL
+cb92: d0 03                        bne     BASCLCX           ;=>don't sniff under Pascal
+cb94: 20 75 fc                     jsr     MON_SNIFFIRQ      ;go do it
+cb97: 68           BASCLCX         pla                       ;restore AC
+cb98: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : CTLCHAR                                                            *
+                   * Function: execute ctl char                                                   *
+                   * Input   : AC=char                                                            *
+                   * Output  : 'BCS' if not ctl                                                   *
+                   *         : 'BCC' if ctl executed                                              *
+                   * Volatile: nothing                                                            *
+                   * Calls   : many things                                                        *
+                   ********************************************************************************
+cb99: 8d 78 04     CTLCHAR         sta     TEMP1             ;temp save of char
+cb9c: 48                           pha                       ;save AC
+cb9d: 98                           tya                       ;save Y
+cb9e: 48                           pha
+                   ;
+cb9f: ac 78 04                     ldy     TEMP1             ;get char in question
+cba2: c0 07                        cpy     #$07              ;is it NUL..ACK?
+cba4: 90 05                        bcc     CTLCHARX          ;=>yes, not used
+cba6: b9 71 cc                     lda     CTLADH-7,y        ;is it ctl?
+cba9: d0 03                        bne     CTLGO             ;=>yes
+cbab: 38           CTLCHARX        sec                       ;say 'not ctl'
+cbac: b0 04                        bcs     CTLRET            ;=>done
+
+cbae: 20 b6 cb     CTLGO           jsr     CTLXFER           ;execute subroutine
+cbb1: 18                           clc                       ;say 'ctl char executed'
+cbb2: 68           CTLRET          pla                       ;restore
+cbb3: a8                           tay                       ; Y
+cbb4: 68                           pla                       ;  and AC
+cbb5: 60                           rts
+
+cbb6: 48           CTLXFER         pha                       ;push onto stack for
+cbb7: b9 58 cc                     lda     CTLADL-7,y        ;  transfer trick
+cbba: 48                           pha
+cbbb: 60                           rts                       ;xfer to routine
+
+                   ;
+                   ; Execute bell.
+                   ;
+cbbc: a9 40        X_BELL          lda     #$40              ;ripped off from monitor
+cbbe: 20 cf cb                     jsr     WAIT
+cbc1: a0 c0                        ldy     #$c0
+cbc3: a9 0c        BELL2           lda     #$0c
+cbc5: 20 cf cb                     jsr     WAIT
+cbc8: ad 30 c0                     lda     SPKR
+cbcb: 88                           dey
+cbcc: d0 f5                        bne     BELL2
+cbce: 60                           rts
+
+cbcf: 38           WAIT            sec                       ;ripped off from monitor ROM
+cbd0: 48           WAIT2           pha
+cbd1: e9 01        WAIT3           sbc     #$01
+cbd3: d0 fc                        bne     WAIT3
+cbd5: 68                           pla
+cbd6: e9 01                        sbc     #$01
+cbd8: d0 f6                        bne     WAIT2
+cbda: 60                           rts
+
+                   ;
+                   ; Execute backspace.
+                   ;
+cbdb: ce 7b 05     X_BS            dec     OURCH             ;back up CH
+cbde: 10 0b                        bpl     BSDONE            ;=>done
+cbe0: a5 21                        lda     MON_WNDWDTH       ;back up to prior line
+cbe2: 8d 7b 05     BS40            sta     OURCH             ;set CH
+cbe5: ce 7b 05                     dec     OURCH
+cbe8: 20 34 cc                     jsr     X_US              ;now do rev linefeed
+cbeb: 60           BSDONE          rts
+
+                   ;
+                   ; Execute carriage return.
+                   ;
+cbec: ad fb 04     X_CR            lda     MODE              ;which language?
+cbef: 29 20                        and     #M_PASCAL
+cbf1: d0 0a                        bne     X_CRPAS           ;=>Pascal, no clr EOL
+cbf3: ad fb 04                     lda     MODE              ;input or output?
+cbf6: 29 40                        and     #M_BINPUT
+cbf8: f0 03                        beq     X_CRPAS           ;=>output, no clearing
+cbfa: 20 48 cd                     jsr     X_GS              ;clear to EOL
+                   ;
+cbfd: a9 00        X_CRPAS         lda     #0                ;back up ch to
+cbff: 8d 7b 05                     sta     OURCH             ; beginning of line
+cc02: ad fb 04                     lda     MODE              ;are we in BASIC?
+cc05: 29 20                        and     #M_PASCAL
+cc07: d0 03                        bne     X_CRRET           ;=>Pascal, avoid auto L/F
+cc09: 20 91 cc                     jsr     X_LF              ;execute auto LF for BASIC
+cc0c: 60           X_CRRET         rts
+
+                   ;
+                   ; (There's an X.SYN function here that synchronizes with VBL, but it was
+                   ; apparently omitted due to space constraints.)
+                   ;
+                   ; Execute home:
+                   ;
+cc0d: a5 22        X_EM            lda     MON_WNDTOP
+cc0f: 8d fb 05                     sta     OURCV             ;stuff CV
+cc12: a9 00                        lda     #0
+cc14: 8d 7b 05                     sta     OURCH             ;stuff CH
+cc17: 4c 51 cb                     jmp     BASCALC           ;return bia BASCALC (ugh!)
+
+                   ;
+                   ; Execute clear line.
+                   ;
+cc1a: a4 21        X_SUB           ldy     MON_WNDWDTH
+cc1c: 88                           dey
+cc1d: a9 a0        X_SUB80         lda     #“ ”              ;blankie blank
+cc1f: 20 f2 ce     X_SUBLP         jsr     STORCHAR          ;stuff the blank
+cc22: 88                           dey
+cc23: 10 fa                        bpl     X_SUBLP           ;=>clear the line
+cc25: 60                           rts
+
+                   ;
+                   ; Execute forward space.
+                   ;
+cc26: ee 7b 05     X_FS            inc     OURCH             ;bump CH
+cc29: ad 7b 05                     lda     OURCH             ;get the position
+cc2c: c5 21                        cmp     MON_WNDWDTH       ;off the right side?
+cc2e: 90 03                        bcc     X_FSRET           ;=>no, good
+cc30: 20 ec cb                     jsr     X_CR              ;yes, wrap around
+                   ;
+cc33: 60           X_FSRET         rts
+
+                   ;
+                   ; Execute reverse linefeed.
+                   ;
+cc34: ce fb 05     X_US            dec     OURCV             ;back up CV
+cc37: 30 07                        bmi     X_US1             ;=>off top of screen
+cc39: ad fb 05                     lda     OURCV
+cc3c: c5 22                        cmp     MON_WNDTOP        ;off top of window?
+cc3e: b0 05                        bcs     X_US2             ;=>no, still in window
+                   ;
+                   ; Pin CV to window top.
+                   ;
+cc40: ee fb 05     X_US1           inc     OURCV             ;put back where it was
+cc43: f0 03                        beq     X_USRET           ;it goes to 0 always
+cc45: 20 51 cb     X_US2           jsr     BASCALC           ;recompute base addr
+cc48: 60           X_USRET         rts
+
+                   ;
+                   ; Execute "normal video".
+                   ;
+cc49: ad fb 04     X_SO            lda     MODE              ;set mode bit
+cc4c: 29 fb                        and     #$fb              ;set 'normal'  [AND #255-M.VMODE]
+cc4e: a0 ff                        ldy     #255
+cc50: d0 07                        bne     STUFFINV          ;(always)
+
+                   ;
+                   ; Execute "inverse video".
+                   ;
+cc52: ad fb 04     X_SI            lda     MODE              ;set mode bit
+cc55: 09 04                        ora     #M_VMODE          ;set 'inverse'
+cc57: a0 7f                        ldy     #127
+cc59: 8d fb 04     STUFFINV        sta     MODE              ;set mode
+cc5c: 84 32                        sty     MON_INVFLAG       ;stuff flag too
+cc5e: 60                           rts
+
+cc5f: bb           CTLADL          .dd1    <X_BELL-1         ;BEL
+cc60: da                           .dd1    <X_BS-1           ;BS
+cc61: 00                           .dd1    $00               ;HT
+cc62: 90                           .dd1    <X_LF-1           ;LF
+cc63: 22                           .dd1    <X_VT-1           ;VT
+cc64: 41                           .dd1    <X_FF-1           ;FF
+cc65: eb                           .dd1    <X_CR-1           ;CR
+cc66: 48                           .dd1    <X_SO-1           ;SO
+cc67: 51                           .dd1    <X_SI-1           ;SI
+cc68: 00                           .dd1    $00               ;DLE
+cc69: 58                           .dd1    <X_DC1-1          ;DC1
+cc6a: 76                           .dd1    <X_DCI2-1         ;DC2
+cc6b: 00                           .dd1    $00               ;DC3
+cc6c: 00                           .dd1    $00               ;DC4
+cc6d: 8f                           .dd1    <X_NAK-1          ;NAK
+cc6e: a9                           .dd1    <SCROLLDN-1       ;SYN
+cc6f: a3                           .dd1    <SCROLLUP-1       ;ETB
+cc70: 00                           .dd1    $00               ;CAN
+cc71: 0c                           .dd1    <X_EM-1           ;EM
+cc72: 19                           .dd1    <X_SUB-1          ;SUB
+cc73: 00                           .dd1    $00               ;ESC
+cc74: 25                           .dd1    <X_FS-1           ;FS
+cc75: 47                           .dd1    <X_GS-1           ;GS
+cc76: 00                           .dd1    $00               ;RS
+cc77: 33                           .dd1    <X_US-1           ;US
+                   ;
+cc78: cb           CTLADH          .dd1    >X_BELL           ;BEL
+cc79: cb                           .dd1    >X_BS             ;BS
+cc7a: 00                           .dd1    $00               ;HT
+cc7b: cc                           .dd1    >X_LF             ;LF
+cc7c: cd                           .dd1    >X_VT             ;VT
+cc7d: cd                           .dd1    >X_FF             ;FF
+cc7e: cb                           .dd1    >X_CR             ;CR
+cc7f: cc                           .dd1    >X_SO             ;SO
+cc80: cc                           .dd1    >X_SI             ;SI
+cc81: 00                           .dd1    $00               ;DLE
+cc82: cd                           .dd1    >X_DC1            ;DC1
+cc83: cd                           .dd1    >X_DCI2           ;DC2
+cc84: 00                           .dd1    $00               ;DC3
+cc85: 00                           .dd1    $00               ;DC4
+cc86: cd                           .dd1    >X_NAK            ;NAK
+cc87: cc                           .dd1    >SCROLLDN         ;SYN
+cc88: cc                           .dd1    >SCROLLUP         ;ETB
+cc89: 00                           .dd1    $00               ;CAN
+cc8a: cc                           .dd1    >X_EM             ;EM
+cc8b: cc                           .dd1    >X_SUB            ;SUB
+cc8c: 00                           .dd1    $00               ;ESC
+cc8d: cc                           .dd1    >X_FS             ;FS
+cc8e: cd                           .dd1    >X_GS             ;GS
+cc8f: 00                           .dd1    $00               ;RS
+cc90: cc                           .dd1    >X_US             ;US
+
+                   ;
+                   ; Execute linefeed.
+                   ;
+cc91: ee fb 05     X_LF            inc     OURCV             ;bump CV
+cc94: ad fb 05                     lda     OURCV             ;see if off bottom
+cc97: c5 23                        cmp     MON_WNDBTM        ;off the end?
+cc99: b0 03                        bcs     X_LF2             ;=>yes
+cc9b: 4c 20 cd                     jmp     X_LFRET           ;=>no, done
+
+cc9e: a4 23        X_LF2           ldy     MON_WNDBTM        ;set to
+cca0: 88                           dey
+cca1: 8c fb 05                     sty     OURCV             ; the bottom
+                   ;
+                   ; Scroll the screen.
+                   ;
+cca4: 8a           SCROLLUP        txa                       ;save X
+cca5: 48                           pha
+cca6: a2 01                        ldx     #1                ;direction=up
+cca8: d0 04                        bne     SCROLL1
+
+ccaa: 8a           SCROLLDN        txa                       ;save X
+ccab: 48                           pha
+ccac: a2 00                        ldx     #0                ;direction=down
+                   ;
+ccae: 2c 1f c0     SCROLL1         bit     RD80VID           ;which mode?
+ccb1: 10 05                        bpl     SCROLL2           ;=>40, do with existing width
+ccb3: a5 21                        lda     MON_WNDWDTH       ;temporarily save
+ccb5: 48                           pha                       ; the width and
+ccb6: 46 21                        lsr     MON_WNDWDTH       ;  divide it by 2
+                   ;
+ccb8: 20 d1 cc     SCROLL2         jsr     SCRLSUB           ;scroll 40 cols
+ccbb: 2c 1f c0                     bit     RD80VID           ;are we in 80-mode?
+ccbe: 10 51                        bpl     S_SCRLRET         ;=>no, done
+                   ;
+                   ; For 80, do the other page.
+                   ;
+ccc0: 08                           php                       ;ensure IRQ inhibited
+ccc1: 78                           sei                       ; while txtpage2 mapped in
+ccc2: ad 55 c0                     lda     TXTPAGE2          ;set page2
+ccc5: 20 d1 cc                     jsr     SCRLSUB           ;scroll page2
+ccc8: ad 54 c0                     lda     TXTPAGE1          ;restore page1
+cccb: 28                           plp                       ;restore IRQ state now
+cccc: 68                           pla
+cccd: 85 21                        sta     MON_WNDWDTH
+cccf: d0 40                        bne     S_SCRLRET         ;=>done scroll80 (always taken)
+
+                   ;
+                   ; 40-column windowed scroll.
+                   ;
+ccd1: bc f9 cf     SCRLSUB         ldy     WNDTAB,x          ;get window top/bot
+ccd4: b9 00 00                     lda     0,y
+ccd7: e0 01                        cpx     #1                ;scrolling up?
+ccd9: b0 02                        bcs     MSCRL0            ;=>yes, no problem
+ccdb: e9 00                        sbc     #0                ;-1 if down (src=btm-1)
+ccdd: 48           MSCRL0          pha
+ccde: 20 54 cb                     jsr     BASCALCZ
+cce1: a5 28        MSCRL1          lda     MON_BASL
+cce3: 85 2a                        sta     BAS2L
+cce5: a5 29                        lda     MON_BASH
+cce7: 85 2b                        sta     BAS2H
+cce9: a4 21                        ldy     MON_WNDWDTH
+cceb: 88                           dey
+ccec: 68                           pla
+cced: 18                           clc
+ccee: 7d f0 cf                     adc     PLUSMINUS1,x      ;up/down
+ccf1: d5 22                        cmp     MON_WNDTOP,x      ;at the end?
+ccf3: f0 0d                        beq     MSCRLRET
+ccf5: 48                           pha
+ccf6: 20 54 cb                     jsr     BASCALCZ
+ccf9: b1 28        MSCRL2          lda     (MON_BASL),y
+ccfb: 91 2a                        sta     (BAS2L),y
+ccfd: 88                           dey
+ccfe: 10 f9                        bpl     MSCRL2
+cd00: 30 df                        bmi     MSCRL1
+
+cd02: e0 00        MSCRLRET        cpx     #0                ;scrolling down?
+cd04: d0 0a                        bne     MSCRLRTS          ;=>no
+cd06: 20 54 cb                     jsr     BASCALCZ
+cd09: b1 28        ONEMORE         lda     (MON_BASL),y
+cd0b: 91 2a                        sta     (BAS2L),y
+cd0d: 88                           dey
+cd0e: 10 f9                        bpl     ONEMORE
+cd10: 60           MSCRLRTS        rts
+
+                   ;
+                   ; Done with the scrolling jazz.
+                   ;
+cd11: b4 22        S_SCRLRET       ldy     MON_WNDTOP,x      ;clear top or bottom line
+cd13: 8a                           txa                       ;if getting top,
+cd14: f0 01                        beq     X_SCRLRET2        ; don't decrement!
+cd16: 88                           dey
+cd17: 98           X_SCRLRET2      tya                       ;temp CV setup
+cd18: 20 54 cb                     jsr     BASCALCZ          ;compute base of line to clear
+cd1b: 68                           pla                       ;restore
+cd1c: aa                           tax                       ; X
+cd1d: 20 1a cc                     jsr     X_SUB             ;clear bottom line
+                   ;
+cd20: 4c 51 cb     X_LFRET         jmp     BASCALC           ;return via BASCALC (ugh!)
+
+                   ;
+                   ; Execute clr to EOS.
+                   ;
+cd23: 20 48 cd     X_VT            jsr     X_GS              ;clear to EOL
+cd26: ad fb 05                     lda     OURCV             ;save CV
+cd29: 48                           pha
+cd2a: 10 06                        bpl     X_VTNEXT          ;do next line (always taken)
+
+cd2c: 20 51 cb     X_VTLOOP        jsr     BASCALC           ;BASCALC it
+cd2f: 20 1a cc                     jsr     X_SUB             ;clear line
+cd32: ee fb 05     X_VTNEXT        inc     OURCV             ;bump CV
+cd35: ad fb 05                     lda     OURCV
+cd38: c5 23                        cmp     MON_WNDBTM        ;off screen?
+cd3a: 90 f0                        bcc     X_VTLOOP          ;=>no, keep going
+cd3c: 68                           pla                       ;restore
+cd3d: 8d fb 05                     sta     OURCV             ; CV
+cd40: 10 de                        bpl     X_LFRET           ;return via similar code
+
+                   ;
+                   ; Execute clear.
+                   ;
+cd42: 20 0d cc     X_FF            jsr     X_EM              ;home the cursor
+cd45: 4c 23 cd                     jmp     X_VT              ;return via CLREOS (ugh!)
+
+                   ;
+                   ; Execute clear to EOL.
+                   ;
+cd48: ac 7b 05     X_GS            ldy     OURCH             ;get CH
+cd4b: 4c 54 cd                     jmp     X_GS2             ;check for end first!
+
+cd4e: a9 a0        X_GSEOLZ        lda     #“ ”              ;fer U hackers
+cd50: 20 f2 ce                     jsr     STORCHAR          ;stuff it
+cd53: c8                           iny
+cd54: c4 21        X_GS2           cpy     MON_WNDWDTH       ;stop sometime
+cd56: 90 f6                        bcc     X_GSEOLZ          ;yasl do more
+cd58: 60                           rts
+
+                   ;
+                   ; Execute '40col mode'.
+                   ;
+cd59: a9 00        X_DC1           lda     #0                ;assume textmode
+cd5b: 85 20                        sta     MON_WNDLEFT
+cd5d: 2c 1a c0                     bit     RDTEXT            ;are we in text mode?
+cd60: 30 02                        bmi     X_DC1B            ;=>yes
+cd62: a9 14                        lda     #20               ;if gr, set splitscreen
+cd64: 85 22        X_DC1B          sta     MON_WNDTOP
+cd66: a9 18                        lda     #24
+cd68: 85 23                        sta     MON_WNDBTM
+cd6a: a9 28                        lda     #40
+cd6c: 85 21                        sta     MON_WNDWDTH
+cd6e: 2c 1f c0                     bit     RD80VID           ;were we in 80-mode?
+cd71: 10 03                        bpl     X_DC1RTS          ;=>no, no cvt needed
+cd73: 20 db cd                     jsr     SCRN84            ;cvt 80-->40
+cd76: 60           X_DC1RTS        rts
+
+                   ;
+                   ; Execute '80col mode'.
+                   ;
+cd77: 20 24 cb     X_DCI2          jsr     TESTCARD          ;is card there?
+cd7a: d0 1e                        bne     X_DC2RET          ;=>nope, forget it
+cd7c: 20 9b cd                     jsr     FULL80            ;set full window
+cd7f: 2c 1a c0                     bit     RDTEXT            ;are we in text mode?
+cd82: 30 04                        bmi     X_DC2B            ;=>yes
+cd84: a9 14                        lda     #20               ;if gr, set splitscreen
+cd86: 85 22                        sta     MON_WNDTOP
+cd88: 2c 18 c0     X_DC2B          bit     RD80COL           ;remember prior mode
+cd8b: 30 0d                        bmi     X_DC2RET          ;=>no cvt needed if was 80
+cd8d: 4c 32 ce                     jmp     SCRN48            ;ret via convert 40-->80
+
+                   ;
+                   ; Execute 'quit'.
+                   ;
+cd90: ad fb 04     X_NAK           lda     MODE              ;only valid in BASIC
+cd93: 29 20                        and     #M_PASCAL
+cd95: d0 03                        bne     X_DC2RET          ;ignore if Pascal
+cd97: 20 aa cd                     jsr     QUIT              ;get setup to quit
+cd9a: 60           X_DC2RET        rts                       ;done; caller won't return
+
+                   ********************************************************************************
+                   * Name    : FULL80                                                             *
+                   * Function: set full 80col window                                              *
+                   * Input   : none                                                               *
+                   * Output  : window parameters                                                  *
+                   * Volatile: AC                                                                 *
+                   ********************************************************************************
+cd9b: a9 00        FULL80          lda     #0
+cd9d: 85 22                        sta     MON_WNDTOP
+cd9f: 85 20                        sta     MON_WNDLEFT
+cda1: a9 50                        lda     #80
+cda3: 85 21                        sta     MON_WNDWDTH
+cda5: a9 18                        lda     #24
+cda7: 85 23                        sta     MON_WNDBTM
+cda9: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : QUIT                                                               *
+                   * Function: setup to quit the card                                             *
+                   * Input   : nothing                                                            *
+                   * Ouptut  : nothing                                                            *
+                   * Volatile: all regs                                                           *
+                   * Calls   : X_FF, FULL80, BASCALC, SETKBD, SETVID                              *
+                   ********************************************************************************
+cdaa: a9 00        QUIT            lda     #0                ;set full 40-col window
+cdac: 85 22                        sta     MON_WNDTOP
+cdae: 85 20                        sta     MON_WNDLEFT
+cdb0: a9 18                        lda     #24
+cdb2: 85 23                        sta     MON_WNDBTM
+cdb4: a9 28                        lda     #40
+cdb6: 85 21                        sta     MON_WNDWDTH
+cdb8: 2c 1f c0                     bit     RD80VID           ;what width?
+cdbb: 10 03                        bpl     QUIT2             ;->no cvt needed if 40
+cdbd: 20 db cd                     jsr     SCRN84            ;convert 40-->80
+cdc0: a9 17        QUIT2           lda     #23               ;vtab to the
+cdc2: 8d fb 05                     sta     OURCV             ; bottom line
+cdc5: 20 51 cb                     jsr     BASCALC
+cdc8: a9 00                        lda     #0                ;  and place cursor
+cdca: 8d 7b 05                     sta     OURCH             ;   at left side
+cdcd: 8d 0e c0                     sta     CLRALTCHAR        ;lcase chars off
+cdd0: a9 ff                        lda     #$ff              ;destroy the
+cdd2: 8d fb 04                     sta     MODE              ; mode byte
+cdd5: 20 93 fe                     jsr     MON_SETVID        ;PR#0
+cdd8: 4c 89 fe                     jmp     MON_SETKBD        ;return via IN#0 (ugh!)
+
+                   ********************************************************************************
+                   * Name    : SCRN84                                                             *
+                   * Function: convert 80vid-->40vid                                              *
+                   * Input   : none                                                               *
+                   * Output  : none                                                               *
+                   * Volatile: all registers                                                      *
+                   * Note    : uses 'BAS2H/L' as temps                                            *
+                   ********************************************************************************
+cddb: ad fb 05     SCRN84          lda     OURCV             ;save current
+cdde: 48                           pha
+cddf: ad 7b 05                     lda     OURCH             ; settings
+cde2: 48                           pha
+                   ;
+cde3: a9 17                        lda     #23
+cde5: 85 2a                        sta     BAS2L             ;use as a temp
+cde7: 8d 01 c0                     sta     SET80COL
+cdea: a5 2a        SCR40           lda     BAS2L
+cdec: 20 54 cb                     jsr     BASCALCZ          ;begin at bottom and work up
+cdef: 20 0a ce                     jsr     ATEFOR            ;do this line
+cdf2: c6 2a                        dec     BAS2L
+cdf4: 30 0b                        bmi     SCR40RET          ;=>done (hit top)
+cdf6: 2c 1a c0                     bit     RDTEXT            ;are we in midexmode[sic]?
+cdf9: 30 ef                        bmi     SCR40             ;=>no, do entire screen
+cdfb: a5 2a                        lda     BAS2L             ;if so, only do bottom
+cdfd: c9 14                        cmp     #20               ; four (4) lines of window
+cdff: b0 e9                        bcs     SCR40
+ce01: 8d 00 c0     SCR40RET        sta     CLR80COL
+ce04: 8d 0c c0                     sta     CLR80VID
+ce07: 4c 58 ce                     jmp     SCRNRET           ;return via similar code
+
+ce0a: 08           ATEFOR          php                       ;lock IRQ while
+ce0b: 78                           sei                       ; screenholes are wrong
+ce0c: a0 28                        ldy     #40
+ce0e: 84 2b                        sty     BAS2H
+ce10: 2c 54 c0                     bit     TXTPAGE1
+ce13: 20 22 ce     ATEFOR1         jsr     GET84
+ce16: 2c 55 c0                     bit     TXTPAGE2
+ce19: 20 22 ce                     jsr     GET84
+ce1c: a4 2b                        ldy     BAS2H             ;done?
+ce1e: d0 f3                        bne     ATEFOR1           ;->no, do whole line
+ce20: 28                           plp                       ;restore IRQ now
+ce21: 60                           rts
+
+ce22: c6 2b        GET84           dec     BAS2H
+ce24: a5 2b                        lda     BAS2H
+ce26: 4a                           lsr     A
+ce27: a8                           tay
+ce28: b1 28                        lda     (MON_BASL),y
+ce2a: a4 2b                        ldy     BAS2H
+ce2c: 2c 54 c0                     bit     TXTPAGE1
+ce2f: 91 28                        sta     (MON_BASL),y
+ce31: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : SCRN48                                                             *
+                   * Function: convert 40vid-->80vid                                              *
+                   * Input   : none                                                               *
+                   * Output  : none                                                               *
+                   * Volatile: all registers                                                      *
+                   * Note    : uses 'BAS2H/L' as temps                                            *
+                   ********************************************************************************
+ce32: ad fb 05     SCRN48          lda     OURCV             ;save CV
+ce35: 48                           pha
+ce36: ad 7b 05                     lda     OURCH             ; and CH
+ce39: 48                           pha
+                   ;
+ce3a: a9 17                        lda     #23
+ce3c: 85 2a                        sta     BAS2L             ;use as a temp
+ce3e: a5 2a        SCR80           lda     BAS2L
+ce40: 20 54 cb                     jsr     BASCALCZ          ;begin at bottom and work up
+ce43: 20 63 ce                     jsr     FORATE            ;do this line
+ce46: c6 2a                        dec     BAS2L
+ce48: 30 0b                        bmi     SCR80RET          ;=>done (hit top)
+ce4a: 2c 1a c0                     bit     RDTEXT            ;are we in mixedmode?
+ce4d: 30 ef                        bmi     SCR80             ;no, do full screen
+ce4f: a5 2a                        lda     BAS2L             ;if 80, only do bottom
+ce51: c9 14                        cmp     #20               ; four (4) lines of window
+ce53: b0 e9                        bcs     SCR80
+                   ;
+ce55: 8d 0d c0     SCR80RET        sta     SET80VID          ;dispaly in 80-mode
+ce58: 68           SCRNRET         pla                       ;used by SCRN84; restore
+ce59: 8d 7b 05                     sta     OURCH             ; CH and
+ce5c: 68                           pla                       ;  CV
+ce5d: 8d fb 05                     sta     OURCV
+ce60: 4c 51 cb                     jmp     BASCALC           ;return via BASCALC (ugh!)
+
+ce63: 08           FORATE          php                       ;don't allow IRQ while
+ce64: 78                           sei                       ; screenholes are wrong
+ce65: a0 00                        ldy     #0
+ce67: 84 2b                        sty     BAS2H
+ce69: 8c 01 c0                     sty     SET80COL
+ce6c: 2c 54 c0                     bit     TXTPAGE1
+ce6f: b1 28        FORATE1         lda     (MON_BASL),y
+ce71: 2c 55 c0                     bit     TXTPAGE2
+ce74: 20 a3 ce                     jsr     DO48
+ce77: 2c 54 c0                     bit     TXTPAGE1
+ce7a: b1 28                        lda     (MON_BASL),y
+ce7c: 20 a3 ce                     jsr     DO48
+ce7f: c0 28                        cpy     #40
+ce81: 90 ec                        bcc     FORATE1
+                   ;
+ce83: 20 91 ce                     jsr     CLRHALF           ;clear right half
+ce86: 2c 55 c0                     bit     TXTPAGE2          ; of both pages
+ce89: 20 91 ce                     jsr     CLRHALF
+ce8c: 2c 54 c0                     bit     TXTPAGE1
+ce8f: 28                           plp                       ;OK to allow IRQ now
+ce90: 60                           rts
+
+ce91: a0 14        CLRHALF         ldy     #20
+ce93: a9 a0                        lda     #“ ”
+ce95: 24 32                        bit     MON_INVFLAG       ;which mode?
+ce97: 30 02                        bmi     CLRHALF2          ;=>normal
+ce99: 29 7f                        and     #$7f              ;inverse
+ce9b: 91 28        CLRHALF2        sta     (MON_BASL),y      ;stuff the blank
+ce9d: c8                           iny
+ce9e: c0 28                        cpy     #40
+cea0: d0 f9                        bne     CLRHALF2
+cea2: 60                           rts
+
+cea3: 48           DO48            pha
+cea4: 98                           tya
+cea5: 4a                           lsr     A
+cea6: a8                           tay
+cea7: 68                           pla
+cea8: 91 28                        sta     (MON_BASL),y
+ceaa: e6 2b                        inc     BAS2H
+ceac: a4 2b                        ldy     BAS2H
+ceae: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : SETCH                                                              *
+                   * Function: set OURCH and CH                                                   *
+                   * Input   : AC=CH value                                                        *
+                   * Output  : OURCH, CH mod 40                                                   *
+                   * Volatile: nothing                                                            *
+                   * Calls   : nothing                                                            *
+                   ********************************************************************************
+ceaf: 8d 7b 05     SETCH           sta     OURCH             ;stuff OURCH
+ceb2: 85 24                        sta     MON_CH            ;stuff in case we're 40 mode
+ceb4: 8d 7b 04                     sta     OLDCH
+ceb7: 2c 1f c0                     bit     RD80VID           ;in 80-mode?
+ceba: 10 1d                        bpl     SETCHRTS          ;=>no, done
+                   ;
+                   ; If we're near the end of our 80col line, move CH up.  If not, leave CH pinned
+                   ; at zero...
+cebc: a9 00                        lda     #0                ;ping CH at zero
+cebe: 85 24                        sta     MON_CH
+cec0: 8d 7b 04                     sta     OLDCH             ;remember the setting
+cec3: a5 21                        lda     MON_WNDWDTH       ;check if near the end
+cec5: 38                           sec
+cec6: ed 7b 05                     sbc     OURCH             ;get abs CH
+cec9: c9 08                        cmp     #8                ;near the end?
+cecb: b0 0c                        bcs     SETCHRTS          ;=>nope
+cecd: 85 24                        sta     MON_CH            ;yes, move CH up near right
+cecf: a9 28                        lda     #40
+ced1: 38                           sec
+ced2: e5 24                        sbc     MON_CH
+ced4: 85 24                        sta     MON_CH            ;BASIC will see that now
+ced6: 8d 7b 04                     sta     OLDCH             ;remember the setting
+                   ;
+ced9: ad 7b 05     SETCHRTS        lda     OURCH             ;restore AC
+cedc: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : INVERT                                                             *
+                   * Function: invert char at CH/CV                                               *
+                   * Input   : nothing                                                            *
+                   * Output  : char at CH/CV inverted                                             *
+                   * Volatile: nothing                                                            *
+                   * Calls   : PICK, STORCHAR                                                     *
+                   ********************************************************************************
+cedd: 48           INVERT          pha                       ;save AC
+cede: 98                           tya                       ; and Y
+cedf: 48                           pha
+cee0: ac 7b 05                     ldy     OURCH             ;get CH
+cee3: 20 01 cf                     jsr     PICK              ;get character
+cee6: 49 80                        eor     #$80              ;flip inverse/normal
+cee8: 2c 00 cf                     bit     SEV               ;put directly back
+ceeb: 20 06 cf                     jsr     SCREENINIT        ; onto screen
+ceee: 68                           pla                       ;restore Y
+ceef: a8                           tay                       ;and AC
+cef0: 68                           pla
+cef1: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : STORECHAR                                                          *
+                   * Function: store a char on screen                                             *
+                   * Input   : AC=char                                                            *
+                   *         :  Y=CH position                                                     *
+                   * Output  : char on screen                                                     *
+                   * Volatile: nothing                                                            *
+                   * Calls   : SCREENINIT                                                         *
+                   ********************************************************************************
+cef2: 48           STORCHAR        pha                       ;save AC
+cef3: 24 32                        bit     MON_INVFLAG       ;normal or inverse?
+cef5: 30 02                        bmi     LCEF9             ;=>normal
+cef7: 49 80                        eor     #$80              ;inverse
+cef9: 2c 00 cf     LCEF9           bit     SEV               ;V set for store
+cefc: 20 06 cf                     jsr     SCREENINIT        ;=>do it!
+ceff: 68                           pla                       ;restore AC
+cf00: 60           SEV             rts
+
+                   ********************************************************************************
+                   * Name    : PICK                                                               *
+                   * Function: get a char from screen                                             *
+                   * Input   : V clr for pick                                                     *
+                   *         : V set for store                                                    *
+                   *         : AC=char for store                                                  *
+                   *         :  Y=ch position                                                     *
+                   * Output  : AC=char (pick)                                                     *
+                   * Volatile: nothing                                                            *
+                   * Calls   : SCREENINIT                                                         *
+                   ********************************************************************************
+cf01: b8           PICK            clv                       ;V clear for pick
+cf02: 20 06 cf                     jsr     SCREENINIT        ;do it!
+cf05: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : SCREENINIT                                                         *
+                   * Function: store or pick char                                                 *
+                   * Input   : V clr for pick                                                     *
+                   *         : V set for store                                                    *
+                   *         : AC=char for store                                                  *
+                   *         :  Y=ch position                                                     *
+                   * Output  : AC=char (pick)                                                     *
+                   * Volatile: nothing                                                            *
+                   * Calls   : nothing                                                            *
+                   ********************************************************************************
+cf06: 84 1f        SCREENINIT      sty     YSAV1             ;save Y
+cf08: 48                           pha                       ;save character if storing
+                   ; Avoid changing V-flag via BIT!
+cf09: ad 1f c0                     lda     RD80VID           ;what display mode?
+cf0c: 10 32                        bpl     SCRN40            ;=>40-col mode
+                   ;
+                   ; 80-column mode.
+                   ;
+cf0e: a5 1f                        lda     YSAV1             ;get cursor horiz
+cf10: 4a                           lsr     A                 ;divide by two for page
+cf11: a8                           tay                       ;ch to Y-reg
+cf12: 70 16                        bvs     STOR80            ;=>gonna store the char
+                   ;
+                   ; 80-col pick.
+                   ;
+cf14: 08                           php                       ;lock interrupts while
+cf15: 78                           sei                       ; screenholes are wrong
+cf16: ad 55 c0                     lda     TXTPAGE2          ;assume page 2 (evens)
+cf19: 90 03                        bcc     SCRN2             ;=>it is
+cf1b: ad 54 c0                     lda     TXTPAGE1          ;odds go to page1
+cf1e: b1 28        SCRN2           lda     (MON_BASL),y      ;pick the character
+cf20: a8                           tay                       ;hold char temporarily
+cf21: ad 54 c0                     lda     TXTPAGE1          ;restore page1
+cf24: 28                           plp                       ; and allow IRQ again
+cf25: 68                           pla                       ;trash saved AC
+cf26: 98                           tya
+cf27: 48                           pha                       ;make char get restored to AC
+cf28: 50 24                        bvc     STPKEXIT          ;=>done (always taken)
+
+cf2a: 68           STOR80          pla                       ;restore character
+cf2b: 48                           pha                       ;(leave on stack)
+cf2c: 08                           php                       ;lock interrupts while
+cf2d: 78                           sei                       ; the screenholes are wrong
+cf2e: 48                           pha                       ;hold the char temporarily
+cf2f: ad 55 c0                     lda     TXTPAGE2          ;assume page2 (evens)
+cf32: 90 03                        bcc     SCRN3             ;=>it is
+cf34: ad 54 c0                     lda     TXTPAGE1          ;odds go to page1
+cf37: 68           SCRN3           pla                       ;get char to be stored
+cf38: 91 28                        sta     (MON_BASL),y      ;stuff onto screen
+cf3a: ad 54 c0                     lda     TXTPAGE1          ;restore page1
+cf3d: 28                           plp                       ; and allow IRQ again
+cf3e: 70 0e                        bvs     STPKEXIT          ;=>done (always taken)
+
+                   ;
+                   ; 40-column mode.
+                   ;
+cf40: a4 1f        SCRN40          ldy     YSAV1             ;get cursor horiz
+cf42: 70 06                        bvs     STOR40            ;=>store it
+cf44: 68                           pla                       ;trash saved char
+cf45: b1 28                        lda     (MON_BASL),y      ;pick the character
+cf47: 48                           pha                       ;save char for restore
+cf48: 50 04                        bvc     STPKEXIT          ;done (always taken)
+
+cf4a: 68           STOR40          pla                       ;get the character
+cf4b: 48                           pha                       ;(leave on stack)
+cf4c: 91 28                        sta     (MON_BASL),y      ;stuff onto screen
+                   ;
+cf4e: 68           STPKEXIT        pla                       ;restore AC
+cf4f: a4 1f                        ldy     YSAV1             ;restore Y
+cf51: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : ESCON                                                              *
+                   * Function: turn on 'escape' cursor                                            *
+                   * Input   : none                                                               *
+                   * Output  : 'char'=original char                                               *
+                   * Volatile: nothing                                                            *
+                   * Calls   : PICK, STORCHAR                                                     *
+                   ********************************************************************************
+cf52: 48           ESCON           pha                       ;save AC
+cf53: 98                           tya                       ; and Y
+cf54: 48                           pha
+cf55: ac 7b 05                     ldy     OURCH             ;get CH
+cf58: 20 01 cf                     jsr     PICK              ;get original character
+cf5b: 8d 7b 06                     sta     CHAR              ; and remember for ESCOFF
+cf5e: 29 80                        and     #$80              ;save normal/inverse bit
+cf60: 49 ab                        eor     #$ab              ;make it an inverse '+'
+cf62: 4c 6e cf                     jmp     ESCRET            ;return via similar code
+
+                   ********************************************************************************
+                   * Name    : ESCOFF                                                             *
+                   * Function: turn off 'escape' cursor                                           *
+                   * Input   : 'char'=original char                                               *
+                   * Output  : none                                                               *
+                   * Volatile: nothing                                                            *
+                   * Calls   : STORCHAR                                                           *
+                   ********************************************************************************
+cf65: 48           ESCOFF          pha                       ;save AC
+cf66: 98                           tya                       ; and Y
+cf67: 48                           pha
+cf68: ac 7b 05                     ldy     OURCH             ;get CH
+cf6b: ad 7b 06                     lda     CHAR              ;get original character
+cf6e: 2c 00 cf     ESCRET          bit     SEV               ; and put it back
+cf71: 20 06 cf                     jsr     SCREENINIT        ;  exactly as it was
+cf74: 68                           pla                       ;restore Y
+cf75: a8                           tay
+cf76: 68                           pla                       ; and AC
+cf77: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : COPYROM                                                            *
+                   * Function: copy F8 ROM to LCARD                                               *
+                   * Input   : nothing                                                            *
+                   * Volatile: X, Y                                                               *
+                   * Calls   : nothing                                                            *
+                   ********************************************************************************
+cf78: 48           COPYROM         pha                       ;save AC
+cf79: 08                           php                       ;ensure IRQ inhibited
+cf7a: 78                           sei                       ; while copying ROM
+                   ;
+cf7b: ad 11 c0                     lda     RDLCBNK2          ;get bank2
+cf7e: 48                           pha
+                   ;
+cf7f: ae 12 c0                     ldx     RDLCRAM           ; and RAM flags
+cf82: ad 81 c0                     lda     ROMIN             ;set read-ROM
+cf85: ad 81 c0                     lda     ROMIN             ; write-RAM mode
+                   ;
+cf88: a0 00                        ldy     #0
+cf8a: a9 f8                        lda     #$f8
+cf8c: 85 37                        sta     MON_CSWH          ;use hook for move
+cf8e: a5 36                        lda     MON_CSWL          ;preserve lo byte
+cf90: 48                           pha
+cf91: a9 00                        lda     #0
+cf93: 85 36                        sta     MON_CSWL
+cf95: b1 36        COPYROM2        lda     (MON_CSWL),y      ;copy only patched pages
+cf97: 91 36                        sta     (MON_CSWL),y      ;move the ROM
+cf99: c8                           iny
+cf9a: d0 f9                        bne     COPYROM2
+cf9c: e6 37                        inc     MON_CSWH
+cf9e: d0 f5                        bne     COPYROM2
+                   ;
+cfa0: 68                           pla                       ;restore the
+cfa1: 85 36                        sta     MON_CSWL          ; hook
+cfa3: a9 c3                        lda     #>CN00
+cfa5: 85 37                        sta     MON_CSWH
+                   ;
+cfa7: 68                           pla                       ;which LC bank?
+cfa8: 10 0f                        bpl     LCB1              ;=>bank1
+cfaa: 8a                           txa                       ;RAM or ROM read?
+cfab: 10 06                        bpl     LCB2ROM           ;=>ROM
+cfad: ad 80 c0                     lda     LCBANK2_RW        ;bank2, RAM
+cfb0: 4c c5 cf                     jmp     COPYRET
+
+cfb3: ad 81 c0     LCB2ROM         lda     ROMIN             ;bank2, ROM
+cfb6: 4c c5 cf                     jmp     COPYRET
+
+cfb9: 8a           LCB1            txa                       ;RAM or ROM read?
+cfba: 10 06                        bpl     LCFC2             ;=>ROM
+cfbc: ad 88 c0                     lda     LCBANK1_RW        ;bank1, RAM
+cfbf: 4c c5 cf                     jmp     COPYRET
+
+cfc2: ad 89 c0     LCFC2           lda     ROMIN1            ;bank1, ROM
+                   ;
+cfc5: 28           COPYRET         plp                       ;restore IRQ state now
+cfc6: 68                           pla                       ; and AC
+cfc7: 60                           rts
+
+                   ********************************************************************************
+                   * Name    : PSETUP                                                             *
+                   * Function: setup ZP for Pascal                                                *
+                   * Input   : none                                                               *
+                   * Output  : none                                                               *
+                   * Volatile: AC                                                                 *
+                   * Calls   : nothing                                                            *
+                   ********************************************************************************
+cfc8: ad fb 04     PSETUP          lda     MODE              ;transparent mode?
+cfcb: 29 01                        and     #M_TRANS
+cfcd: d0 03                        bne     PSETUP2           ;=>yes, trust window
+cfcf: 20 9b cd                     jsr     FULL80            ;set full 80col window
+                   ;
+cfd2: a9 ff        PSETUP2         lda     #255
+cfd4: 85 32                        sta     MON_INVFLAG       ;assume normal mode
+                   ;
+cfd6: ad fb 04                     lda     MODE
+cfd9: 29 04                        and     #M_VMODE
+cfdb: f0 02                        beq     PSETUPRET         ;=>it's normal
+cfdd: 46 32                        lsr     MON_INVFLAG       ;make it inverse
+                   ;
+cfdf: ad 7b 07     PSETUPRET       lda     OLDBASL           ;set up base address
+cfe2: 85 28                        sta     MON_BASL
+cfe4: ad fb 07                     lda     OLDBASH
+cfe7: 85 29                        sta     MON_BASH
+cfe9: 60                           rts
+
+                   ;
+                   ; Note: entries 6-7 of these tables are not used.  Thus there are some other
+                   ; values stuffed in.
+                   ;
+cfea: 28           F_TABLE         .dd1    <F_CLREOP-1
+cfeb: 42                           .dd1    <F_HOME-1
+cfec: 4c                           .dd1    <F_SCROLL-1
+cfed: 7c                           .dd1    <F_CLREOL-1
+cfee: 9b                           .dd1    <F_CLEOLZ-1
+cfef: e9                           .dd1    <B_RESET-1        ;use same reset
+cff0: ff           PLUSMINUS1      .dd1    $ff               ;scroll uses this
+cff1: 01                           .dd1    $01
+cff2: 89                           .dd1    <F_SETWND-1
+                   ;
+cff3: e0           B_TABLE         .dd1    <B_CLREOP-1
+cff4: ec                           .dd1    <B_HOME-1
+cff5: cc                           .dd1    <B_SCROLL-1
+cff6: d2                           .dd1    <B_CLREOL-1
+cff7: d8                           .dd1    <B_CLEOLZ-1
+cff8: e9                           .dd1    <B_RESET-1        ;use same reset
+cff9: 23           WNDTAB          .dd1    MON_WNDBTM        ;scroll uses this
+cffa: 22                           .dd1    MON_WNDTOP
+cffb: e6                           .dd1    <B_SETWND-1
+cffc: 00                           .dd1    $00               ;avoid CFFF pipelining
+cffd: 00 00        ZZEND           .junk   2
+Symbol Table
+B_FUNC	$c100
+BASICIN	$c305
+BASICINT	$c300
+BASICOUT	$c307
+HTML generated by 6502bench SourceGen v1.7.4 on 2021/06/10
+Expression style: Merlin
